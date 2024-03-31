@@ -1,11 +1,7 @@
 package de.heldendesbildschirms.mcbedrockconnector
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
@@ -13,8 +9,17 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.io.IOException
 import java.net.*
+import java.nio.ByteBuffer
+import java.nio.channels.DatagramChannel
+import java.nio.channels.SelectionKey
+import java.nio.channels.Selector
+import java.util.concurrent.Callable
+import android.os.AsyncTask
+
 
 class MainActivity : AppCompatActivity() {
+
+    private lateinit var channel: DatagramChannel
 
     private companion object {
         private const val TAG = "MainActivity"
@@ -22,6 +27,8 @@ class MainActivity : AppCompatActivity() {
         private const val DESTINATION_IP = "164.68.125.80"
         private const val DESTINATION_PORT = 19132
         private const val REQUEST_INTERNET_PERMISSION = 123
+        private const val MAX_PACKET_SIZE = 65507
+        private const val  MAX_DATAGRAM_SIZE = 65507
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +50,19 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Starte den UDP-Server in einem separaten Thread
+        //val fromAddress = InetSocketAddress("0.0.0.0", 19132)
+        //val toAddress = InetSocketAddress("164.68.125.80", 19132)
+        //val forwarder = UdpForwarder(fromAddress, toAddress)
+
+        //Thread(PacketForwarder(DESTINATION_PORT , DESTINATION_IP, DESTINATION_PORT)).start()
+
+        //val fromAddress = InetSocketAddress("0.0.0.0", SOURCE_PORT)
+        //val toAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT)
+        //val ruleName = "ForwardingRule1" // Beispiel: Name der Weiterleitungsregel
+
+        //UdpForwarderTask(fromAddress, toAddress, ruleName)
         Thread {
+            //startnewUDPServer()
             startUDPServer()
             //startUDPServersThreads() //Das kann zwar alles beschleunigen, crasht aber, weill der Socket nicht empfangen und senden gleichzeitig kann und hier wird ein eigener erstellt in jeder Funktion, also so geht das auch nicht.
         }.start()
@@ -121,7 +140,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startUDPClientThreadVorlage(packet: DatagramPacket):DatagramPacket {
-        var maxPaketSize = 65000
+        var maxPaketSize = 65507
         var timeout = 300
         val clientSocket  = DatagramSocket()
         clientSocket.setSoTimeout(timeout)
@@ -150,7 +169,11 @@ class MainActivity : AppCompatActivity() {
                 try {
                     debugVar = 0
                     serverSocket.setSoTimeout(timeout)
+                    serverSocket.setReceiveBufferSize(maxPaketSize)
+                    serverSocket.setSendBufferSize(maxPaketSize)
                     clientSocket.setSoTimeout(timeout)
+                    clientSocket.setReceiveBufferSize(maxPaketSize)
+                    clientSocket.setSendBufferSize(maxPaketSize)
                     //val buffer = ByteArray(maxPaketSize)
                     val packet = DatagramPacket(ByteArray(maxPaketSize), maxPaketSize)
                     serverSocket.receive(packet) //##### Problemstelle ######
@@ -265,5 +288,348 @@ class MainActivity : AppCompatActivity() {
 
     private fun ByteArray.toHexString(): String {
         return this.joinToString(separator = " ") { byte -> String.format("%02X", byte) }
+    }
+
+    private fun startnewUDPServer() {
+        try {
+            // Erstelle einen DatagramChannel zum Empfangen von UDP-Paketen auf dem Quellport
+            channel = DatagramChannel.open()
+            channel.socket().bind(InetSocketAddress(SOURCE_PORT))
+            channel.configureBlocking(false)
+
+            // Endlosschleife zum kontinuierlichen Empfangen von Paketen
+            val buffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+            while (true) {
+                buffer.clear()
+                val senderAddress = channel.receive(buffer)
+                // Weiterleiten des empfangenen Pakets an das Ziel, wenn senderAddress nicht null ist
+                senderAddress?.let {
+                    Log.d(TAG, "empfangenen Daten $senderAddress. ${buffer}")
+                    val forwardChannel = DatagramChannel.open()
+                    buffer.flip()
+                    //Thread {
+                    forwardPacket(buffer, it as InetSocketAddress, senderAddress)
+                    //}.start()
+                    // Verbinde den Weiterleitungs-Kanal mit der Zieladresse und dem Zielport
+                }
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun forwardPacket(buffer: ByteBuffer, senderAddress: InetSocketAddress, clinetSenderAddress :SocketAddress) {
+        try {
+            // Erstelle einen neuen DatagramChannel für den Weiterleitungsprozess
+            val forwardChannel = DatagramChannel.open()
+
+            // Verbinde den Weiterleitungs-Kanal mit der Zieladresse und dem Zielport
+            forwardChannel.connect(InetSocketAddress(DESTINATION_IP, DESTINATION_PORT))
+
+            // Sende das Paket an das Ziel
+            forwardChannel.write(buffer)
+            val receiveBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+
+          //  while (true) {
+                receiveBuffer.clear()
+                val senderAddress = forwardChannel.receive(receiveBuffer)
+                // Überprüfen, ob senderAddress nicht null ist und dann die Schleife verlassen
+                if (senderAddress != null) {
+                    Log.d(TAG, "empfangenen Daten $senderAddress. ${receiveBuffer} $clinetSenderAddress")
+                    receiveBuffer.flip()
+                    channel.send(receiveBuffer, clinetSenderAddress)
+                    //channel.close()
+                    //forwardChannel.connect(clinetSenderAddress)
+                    /*val forwardChanneltest = DatagramChannel.open()
+                    forwardChanneltest.send(receiveBuffer, clinetSenderAddress)
+                    forwardChanneltest.close()*/
+                    //break // Die Schleife verlassen, sobald senderAddress nicht null ist
+                }
+           // }
+
+            buffer.clear()
+            // Schließe den Kanal nach dem Senden des Pakets
+            //forwardChannel.close()
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun forwardPacketold(buffer: ByteBuffer, senderAddress: InetSocketAddress, clientSenderAddress: SocketAddress) {
+        try {
+            // Überprüfen, ob die Größe des zu sendenden Datagramms die maximale Größe überschreitet
+            if (buffer.remaining() > MAX_DATAGRAM_SIZE) {
+                /*Log.e(TAG, "Message too long, splitting into smaller datagrams")
+                // Wenn ja, das Datagramm in kleinere Teile aufteilen und nacheinander senden
+                val remaining = buffer.remaining()
+                var offset = 0
+                while (offset < remaining) {
+                    val chunkSize = min(MAX_DATAGRAM_SIZE, remaining - offset)
+                    val chunkBuffer = ByteBuffer.allocate(chunkSize)
+                    // Chunk des Datagrams kopieren
+                    for (i in 0 until chunkSize) {
+                        chunkBuffer.put(buffer.get())
+                    }
+                    // Chunk-Buffer für das Senden vorbereiten
+                    chunkBuffer.flip()
+                    // Datagramm senden
+                    sendChunk(chunkBuffer, senderAddress as InetSocketAddress, clinetSenderAddress as InetSocketAddress)
+                    offset += chunkSize
+                }
+                */
+            } else {
+                // Wenn die Größe des Datagramms innerhalb des zulässigen Bereichs liegt, es einfach senden
+                sendChunk(buffer, senderAddress, clientSenderAddress)
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun sendChunk(chunkBuffer: ByteBuffer, senderAddress: InetSocketAddress, clientSenderAddress: SocketAddress) {
+        val forwardChannel = DatagramChannel.open()
+        try {
+            // Verbinde den Weiterleitungs-Kanal mit der Zieladresse und dem Zielport
+            forwardChannel.connect(InetSocketAddress(DESTINATION_IP, DESTINATION_PORT))
+            // Senden des Datagrams
+            forwardChannel.write(chunkBuffer)
+
+            // Empfangen einer Antwort, falls erforderlich
+            val receiveBuffer = ByteBuffer.allocate(MAX_DATAGRAM_SIZE)
+            val receivedAddress = forwardChannel.receive(receiveBuffer)
+            receivedAddress?.let {
+                Log.d(TAG, "empfangenen Daten $senderAddress. ${receiveBuffer} $clientSenderAddress")
+
+                // Datagramm an den ursprünglichen Client senden
+                receiveBuffer.flip()
+                channel.send(receiveBuffer, clientSenderAddress)
+            }
+            //forwardChannel.close()
+        }
+        finally {
+            // Schließen des Weiterleitungs-Kanals
+            forwardChannel.close()
+        }
+    }
+
+    class PacketForwarder(private val localPort: Int, private val destinationIp: String, private val destinationPort: Int) : Runnable {
+        private lateinit var serverSocket: DatagramSocket
+        private lateinit var clientSocket: DatagramSocket
+        private lateinit var destinationAddress: InetAddress
+
+        init {
+            try {
+                serverSocket = DatagramSocket(localPort, InetAddress.getByName("0.0.0.0"))
+                clientSocket = DatagramSocket()
+                destinationAddress = InetAddress.getByName(destinationIp)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        override fun run() {
+            try {
+                val receiveBuffer = ByteArray(65507) // Maximum UDP packet size
+                val receivePacket = DatagramPacket(receiveBuffer, receiveBuffer.size)
+
+                while (true) {
+                    serverSocket.setSoTimeout(100)
+                    serverSocket.receive(receivePacket)
+                    forwardPacket(receivePacket)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                serverSocket.close()
+                clientSocket.close()
+            }
+        }
+
+        private fun forwardPacket(packet: DatagramPacket) {
+            try {
+                val sendPacket = DatagramPacket(packet.data, packet.length, destinationAddress, destinationPort)
+                clientSocket.setSoTimeout(100)
+                clientSocket.send(sendPacket)
+
+                // Receive response from destination server
+                val responseBuffer = ByteArray(65507) // Maximum UDP packet size
+                val responsePacket = DatagramPacket(responseBuffer, responseBuffer.size)
+                clientSocket.receive(responsePacket)
+
+                // Send response back to original client
+                val responseToClient = DatagramPacket(responseBuffer, responsePacket.length, packet.address, packet.port)
+                serverSocket.send(responseToClient)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    class UdpForwarderTask(private val from: InetSocketAddress, private val to: InetSocketAddress, private val ruleName: String) : AsyncTask<Void, Void, Void>() {
+
+        private lateinit var udpForwarder: UdpForwarder
+
+        override fun doInBackground(vararg params: Void?): Void? {
+            // Erstellen Sie den UDP-Forwarder und führen Sie ihn aus
+            udpForwarder = UdpForwarder(from, to, ruleName)
+            udpForwarder.call()
+            return null
+        }
+
+        override fun onCancelled() {
+            // Beenden Sie den Forwarder, wenn die Aufgabe abgebrochen wird
+            //udpForwarder.interrupt()
+        }
+    }
+
+    class UdpForwarder(private val from: InetSocketAddress, private val to: InetSocketAddress, private val ruleName: String) :
+        Callable<Void> {
+
+        private val TAG = "UdpForwarder"
+        private val BUFFER_SIZE = 100000
+        private val TIMEOUT = 3000 // Wartezeit (Millisekunden)
+
+        @Throws(IOException::class, BindException::class)
+        override fun call(): Void? {
+            Log.d(TAG, "Starte UDP-Weiterleitung von ${from.port} zu ${to.port}")
+
+            try {
+                val readBuffer = ByteBuffer.allocate(BUFFER_SIZE)
+
+                // DatagramChannel für eingehende Daten öffnen und konfigurieren
+                val inChannel = DatagramChannel.open()
+                inChannel.configureBlocking(false)
+                try {
+                    inChannel.socket().bind(from)
+                } catch (e: SocketException) {
+                    Log.e(TAG, "Binden des Sockets fehlgeschlagen für Port ${from.port}", e)
+                    throw BindException("Binden des Sockets fehlgeschlagen für Port ${from.port}")
+                }
+
+                // Selector für I/O-Operationen erstellen
+                val selector = Selector.open()
+                inChannel.register(selector, SelectionKey.OP_READ, ClientRecord(to))
+
+                while (true) {
+                    if (Thread.currentThread().isInterrupted) {
+                        Log.i(TAG, "Thread wurde unterbrochen, Aufräumen...")
+                        inChannel.socket().close()
+                        break
+                    }
+
+                    if (selector.select() > 0) {
+                        val keyIter = selector.selectedKeys().iterator()
+                        while (keyIter.hasNext()) {
+                            val key = keyIter.next()
+                            if (key.isReadable) {
+                                handleRead(key, readBuffer)
+                            }
+                            if (key.isValid && key.isWritable) {
+                                handleWrite(key)
+                            }
+                            keyIter.remove()
+                        }
+                    }
+                }
+            } catch (e: IOException) {
+                Log.e(TAG, "Problem beim Öffnen des Selectors", e)
+                throw e
+            }
+            return null
+        }
+
+        @Throws(IOException::class)
+        private fun handleRead(key: SelectionKey, readBuffer: ByteBuffer) {
+            val channel = key.channel() as DatagramChannel
+            val clientRecord = key.attachment() as ClientRecord
+
+            readBuffer.clear()
+            channel.receive(readBuffer)
+            readBuffer.flip()
+            channel.send(readBuffer, clientRecord.toAddress)
+
+            if (readBuffer.remaining() > 0) {
+                clientRecord.writeBuffer.put(readBuffer)
+                key.interestOps(SelectionKey.OP_WRITE)
+            }
+        }
+
+        @Throws(IOException::class)
+        private fun handleWrite(key: SelectionKey) {
+            val channel = key.channel() as DatagramChannel
+            val clientRecord = key.attachment() as ClientRecord
+
+            clientRecord.writeBuffer.flip()
+            val bytesSent = channel.send(clientRecord.writeBuffer, clientRecord.toAddress)
+
+            if (clientRecord.writeBuffer.remaining() > 0) {
+                clientRecord.writeBuffer.compact()
+            } else {
+                key.interestOps(SelectionKey.OP_READ)
+                clientRecord.writeBuffer.clear()
+            }
+        }
+
+        internal class ClientRecord(val toAddress: InetSocketAddress) {
+            val writeBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+        }
+    }
+
+    class UdpForwarderold(private val fromAddress: InetSocketAddress, private val toAddress: InetSocketAddress) {
+
+        private val bufferSize = 100000
+        private val selector = Selector.open()
+        private val readBuffer = ByteBuffer.allocate(bufferSize)
+        private val writeBuffer = ByteBuffer.allocate(bufferSize)
+
+        init {
+            val channel = DatagramChannel.open()
+            channel.socket().bind(fromAddress)
+            channel.configureBlocking(false)
+            channel.register(selector, SelectionKey.OP_READ)
+        }
+
+        fun start() {
+            while (true) {
+                selector.select()
+                val keys = selector.selectedKeys()
+                val iterator = keys.iterator()
+                while (iterator.hasNext()) {
+                    val key = iterator.next()
+                    if (key.isReadable) {
+                        handleRead(key)
+                    } else if (key.isWritable) {
+                        handleWrite(key)
+                    }
+                    iterator.remove()
+                }
+            }
+        }
+
+        private fun handleRead(key: SelectionKey) {
+            val channel = key.channel() as DatagramChannel
+            readBuffer.clear()
+            val fromAddress = channel.receive(readBuffer) as InetSocketAddress
+            readBuffer.flip()
+            val data = ByteArray(readBuffer.remaining())
+            readBuffer.get(data)
+            writeBuffer.clear()
+            writeBuffer.put(data)
+            writeBuffer.flip()
+            val toChannel = DatagramChannel.open()
+            toChannel.send(writeBuffer, toAddress)
+            toChannel.close()
+            writeBuffer.clear()
+        }
+
+        private fun handleWrite(key: SelectionKey) {
+            // Not used in this implementation
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Schließe den Kanal, wenn die App zerstört wird
+        //channel.close()
     }
 }
