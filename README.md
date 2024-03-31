@@ -15,7 +15,9 @@ https://github.com/haveachin/infrared
 https://github.com/cubeworx/cbwxproxy (Docker)  
 https://github.com/cubeworx/cbwxannounce/ (Source)  
 https://github.com/illiteratealliterator/manymine/ (Uhrsprung)  
-https://developer.android.com/reference/java/net/DatagramSocket 
+https://developer.android.com/reference/java/net/DatagramSocket
+https://developer.android.com/reference/java/nio/channels/DatagramChannel (Bessere Lösung als DatagramSocket)
+[https://github.com/elixsr/FwdPortForwardingApp/](https://github.com/elixsr/FwdPortForwardingApp/blob/master/app/src/main/java/com/elixsr/portforwarder/forwarding/UdpForwarder.java)
 
 # Informationen zu Funktionsweise:
 Jeder Bedrock Client sendet über den Broadcast Port einen Unconnected Ping über das Raknet_Protocol, das ist also anderes als wie bei der MC Java Edition und braucht daher keine Nachricht vom Server.
