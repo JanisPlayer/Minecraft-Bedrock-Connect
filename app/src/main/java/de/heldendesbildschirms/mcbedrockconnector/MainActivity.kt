@@ -2,6 +2,7 @@ package de.heldendesbildschirms.mcbedrockconnector
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.AsyncTask
 import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
@@ -14,7 +15,6 @@ import java.nio.channels.DatagramChannel
 import java.nio.channels.SelectionKey
 import java.nio.channels.Selector
 import java.util.concurrent.Callable
-import android.os.AsyncTask
 
 
 class MainActivity : AppCompatActivity() {
@@ -62,8 +62,8 @@ class MainActivity : AppCompatActivity() {
 
         //UdpForwarderTask(fromAddress, toAddress, ruleName)
         Thread {
-            //startnewUDPServer()
-            startUDPServer()
+            startnewUDPServer()
+            //startUDPServer()
             //startUDPServersThreads() //Das kann zwar alles beschleunigen, crasht aber, weill der Socket nicht empfangen und senden gleichzeitig kann und hier wird ein eigener erstellt in jeder Funktion, also so geht das auch nicht.
         }.start()
     }
@@ -293,38 +293,60 @@ class MainActivity : AppCompatActivity() {
     private fun startnewUDPServer() {
         try {
             // Erstelle einen DatagramChannel zum Empfangen von UDP-Paketen auf dem Quellport
-            channel = DatagramChannel.open()
+            val channel = DatagramChannel.open()
             channel.socket().bind(InetSocketAddress(SOURCE_PORT))
+            channel.socket().setReceiveBufferSize(MAX_PACKET_SIZE)
+            channel.socket().setSoTimeout(1000)
             channel.configureBlocking(false)
 
+            val forwardChannel = DatagramChannel.open()
+            forwardChannel.socket().setReceiveBufferSize(MAX_PACKET_SIZE)
+            forwardChannel.socket().setSoTimeout(100) //There are problems maintaining the connection. Maybe this needs to be written differently with disconnect or close. This helps somewhat to reduce the lag, but is not a real solution.
+            forwardChannel.configureBlocking(false)
+            var clinetSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
+            var forwardSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
             // Endlosschleife zum kontinuierlichen Empfangen von Paketen
             val buffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+            val receiveBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+
             while (true) {
                 buffer.clear()
                 val senderAddress = channel.receive(buffer)
                 // Weiterleiten des empfangenen Pakets an das Ziel, wenn senderAddress nicht null ist
                 senderAddress?.let {
-                    Log.d(TAG, "empfangenen Daten $senderAddress. ${buffer}")
-                    val forwardChannel = DatagramChannel.open()
+                    //Log.d(TAG, "empfangenen Daten $senderAddress. ${buffer}")
                     buffer.flip()
-                    //Thread {
-                    forwardPacket(buffer, it as InetSocketAddress, senderAddress)
-                    //}.start()
-                    // Verbinde den Weiterleitungs-Kanal mit der Zieladresse und dem Zielport
+                    clinetSenderAddress = senderAddress// App crash without this
+                    forwardChannel.send(buffer, forwardSenderAddress)
+                }
+
+                receiveBuffer.clear()
+                var forwardSenderAddress = forwardChannel.receive(receiveBuffer)
+                forwardSenderAddress.let {
+                    //Log.d(TAG, "empfangenen Daten $forwardSenderAddress. ${receiveBuffer} $clinetSenderAddress")
+                    receiveBuffer.flip()
+                    channel.send(receiveBuffer, clinetSenderAddress)
                 }
             }
         } catch (e: IOException) {
             e.printStackTrace()
+            Log.d(TAG, "Error occurred")
         }
     }
 
     private fun forwardPacket(buffer: ByteBuffer, senderAddress: InetSocketAddress, clinetSenderAddress :SocketAddress) {
         try {
             // Erstelle einen neuen DatagramChannel für den Weiterleitungsprozess
-            val forwardChannel = DatagramChannel.open()
+            Log.d(TAG, "empfangenen Daten $senderAddress.$clinetSenderAddress")
 
+            val forwardChannel = DatagramChannel.open()
+            forwardChannel.socket().setReceiveBufferSize(MAX_PACKET_SIZE)
+            forwardChannel.socket().setSoTimeout(1000)
+            forwardChannel.configureBlocking(true)
             // Verbinde den Weiterleitungs-Kanal mit der Zieladresse und dem Zielport
+            //forwardChannel.isConnected.let {
             forwardChannel.connect(InetSocketAddress(DESTINATION_IP, DESTINATION_PORT))
+            //}
 
             // Sende das Paket an das Ziel
             forwardChannel.write(buffer)
@@ -349,7 +371,7 @@ class MainActivity : AppCompatActivity() {
 
             buffer.clear()
             // Schließe den Kanal nach dem Senden des Pakets
-            //forwardChannel.close()
+            forwardChannel.close()
         } catch (e: IOException) {
             e.printStackTrace()
         }
