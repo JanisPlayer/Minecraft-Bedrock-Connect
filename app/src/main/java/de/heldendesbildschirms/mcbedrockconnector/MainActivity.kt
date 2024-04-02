@@ -296,12 +296,10 @@ class MainActivity : AppCompatActivity() {
             val channel = DatagramChannel.open()
             channel.socket().bind(InetSocketAddress(SOURCE_PORT))
             channel.socket().setReceiveBufferSize(MAX_PACKET_SIZE)
-            channel.socket().setSoTimeout(1000)
             channel.configureBlocking(false)
 
             val forwardChannel = DatagramChannel.open()
             forwardChannel.socket().setReceiveBufferSize(MAX_PACKET_SIZE)
-            forwardChannel.socket().setSoTimeout(100) //There are problems maintaining the connection. Maybe this needs to be written differently with disconnect or close. This helps somewhat to reduce the lag, but is not a real solution.
             forwardChannel.configureBlocking(false)
             var clinetSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
             var forwardSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
