@@ -313,14 +313,14 @@ class MainActivity : AppCompatActivity() {
                 // Weiterleiten des empfangenen Pakets an das Ziel, wenn senderAddress nicht null ist
                 senderAddress?.let {
                     //Log.d(TAG, "empfangenen Daten $senderAddress. ${buffer}")
+                    clinetSenderAddress = senderAddress
                     buffer.flip()
-                    clinetSenderAddress = senderAddress// App crash without this
                     forwardChannel.send(buffer, forwardSenderAddress)
                 }
 
                 receiveBuffer.clear()
-                var forwardSenderAddress = forwardChannel.receive(receiveBuffer)
-                forwardSenderAddress.let {
+                var forwardSenderAddressTemp = forwardChannel.receive(receiveBuffer)
+                forwardSenderAddressTemp.let {
                     //Log.d(TAG, "empfangenen Daten $forwardSenderAddress. ${receiveBuffer} $clinetSenderAddress")
                     receiveBuffer.flip()
                     channel.send(receiveBuffer, clinetSenderAddress)
