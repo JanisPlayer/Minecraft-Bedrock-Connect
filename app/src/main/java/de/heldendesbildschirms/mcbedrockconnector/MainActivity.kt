@@ -1,25 +1,38 @@
 package de.heldendesbildschirms.mcbedrockconnector
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.AsyncTask
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import java.io.IOException
+import java.lang.Thread.sleep
 import java.net.*
 import java.nio.ByteBuffer
 import java.nio.channels.DatagramChannel
 import java.nio.channels.SelectionKey
 import java.nio.channels.Selector
 import java.util.concurrent.Callable
-
 
 class MainActivity : AppCompatActivity() {
 
@@ -39,10 +52,56 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var sharedPreferences: SharedPreferences
+    private lateinit var myWakeLock: MyWakeLock
+    private val CHANNEL_ID = "MC_Bedroock_Connect_Channel"
+    var mNotificationManager: NotificationManager? = null
 
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        //myWakeLock = MyWakeLock(this)
+        //.acquireWakeLock()
+        val intent = Intent()
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+            intent.action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;
+            intent.data = Uri.parse("package:" + packageName);
+            this.startActivity(intent);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            Toast.makeText(this, "Not allowed isIgnoringBatteryOptimizations", Toast.LENGTH_SHORT).show()
+
+            val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle(CHANNEL_ID)
+                .setContentText("Background activity is restricted on this device.")
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setAutoCancel(true)
+
+            val notificationIntent = Intent(Settings.ACTION_APPLICATION_SETTINGS)
+            val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)
+
+            val expandedNotificationText = """
+        Background activity is restricted on this app.
+        Please allow it so we can post an active notification during work sessions.
+        
+        To do so, click on the notification to go to
+        App management -> search for ${getString(R.string.app_name)} -> Battery Usage -> enable 'Allow background activity'
+    """.trimIndent()
+
+            notificationBuilder.setContentIntent(pendingIntent)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(expandedNotificationText))
+
+            createChannel()
+
+            val notification = notificationBuilder.build()
+
+            mNotificationManager?.notify(10000, notification)
+        } else {
+            //intent.action = Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS;
+        }
+        //this.startActivity(intent);
+
 
         // Überprüfen, ob die Berechtigung zur Laufzeit angefordert werden muss
         if (ContextCompat.checkSelfPermission(
@@ -98,7 +157,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         Thread {
-            startnewUDPServer()
+            //startnewUDPServer()
+            startnewUDPServerThreads()
             //startUDPServer()
             //startUDPServersThreads() //Das kann zwar alles beschleunigen, crasht aber, weill der Socket nicht empfangen und senden gleichzeitig kann und hier wird ein eigener erstellt in jeder Funktion, also so geht das auch nicht.
         }.start()
@@ -123,6 +183,37 @@ class MainActivity : AppCompatActivity() {
         editor.putInt(PREF_DESTINATION_PORT, port)
         editor.apply()
     }
+
+    class MyWakeLock(private val context: Context) {
+        private var wakeLock: PowerManager.WakeLock? = null
+
+        @SuppressLint("InvalidWakeLockTag")
+        fun acquireWakeLock() {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MyWakeLockTag")
+            wakeLock?.acquire()
+        }
+
+        fun releaseWakeLock() {
+            wakeLock?.release()
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun createChannel() {
+        var mNotificationManager =
+            getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
+        val name = "MC Bedrock Connect"
+        val importance = NotificationManager.IMPORTANCE_LOW
+
+        val mChannel = NotificationChannel(CHANNEL_ID, name, importance)
+
+        mChannel.name = "Notifications"
+
+        mNotificationManager.createNotificationChannel(mChannel)
+    }
+
 
     private fun startUDPServersThreads() {
         Thread {
@@ -347,6 +438,64 @@ class MainActivity : AppCompatActivity() {
     }
 
     var forwardSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
+
+    private fun startnewUDPServerThreads() {
+        // Thread für den Empfang von Daten
+        val channel = DatagramChannel.open()
+        val forwardChannel = DatagramChannel.open()
+        //var forwardSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
+        var clinetSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
+
+        val receiveThread = Thread {
+            try {
+                channel.socket().bind(InetSocketAddress(SOURCE_PORT))
+                channel.socket().receiveBufferSize = MAX_PACKET_SIZE
+                channel.configureBlocking(true)
+                //channel.socket().soTimeout = 100 //Does not work to prevent reception stop. For this to work at all, channel must be at 100 and forwardChannel must be at 1000.
+
+                val buffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+
+                while (true) {
+                    buffer.clear()
+                    val senderAddress = channel.receive(buffer)
+                    senderAddress?.let {
+                        clinetSenderAddress = senderAddress
+                        buffer.flip()
+                        forwardChannel.send(buffer, forwardSenderAddress)
+                    }
+                }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                Log.d(TAG, "Error occurred")
+            }
+        }
+        receiveThread.start()
+
+        // Thread für das Weiterleiten von Daten
+        val forwardThread = Thread {
+            try {
+                forwardChannel.socket().receiveBufferSize = MAX_PACKET_SIZE
+                forwardChannel.configureBlocking(true)
+                forwardChannel.socket().soTimeout = 1000
+
+                val receiveBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+
+                while (true) {
+                    receiveBuffer.clear()
+                    val forwardSenderAddressTemp = forwardChannel.receive(receiveBuffer)
+                    forwardSenderAddressTemp?.let {
+                        receiveBuffer.flip()
+                        channel.send(receiveBuffer, clinetSenderAddress)
+                    }
+                }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                Log.d(TAG, "Error occurred")
+            }
+        }
+        forwardThread.start()
+    }
+
     private fun startnewUDPServer() {
         try {
             // Erstelle einen DatagramChannel zum Empfangen von UDP-Paketen auf dem Quellport
@@ -363,6 +512,11 @@ class MainActivity : AppCompatActivity() {
             // Endlosschleife zum kontinuierlichen Empfangen von Paketen
             val buffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
             val receiveBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+
+            //forwardChannel.configureBlocking(true)
+            //channel.configureBlocking(true)
+            //forwardChannel.socket().soTimeout = 100
+            //channel.socket().soTimeout = 1000
 
             while (true) {
                 buffer.clear()
