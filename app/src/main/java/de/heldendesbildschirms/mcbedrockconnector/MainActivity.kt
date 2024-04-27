@@ -141,18 +141,30 @@ class MainActivity : AppCompatActivity() {
         findViewById<EditText>(R.id.editTextHostname).setText(destinationIP)
         findViewById<EditText>(R.id.editTextPort).setText(destinationPort.toString())
         findViewById<Button>(R.id.buttonConfirm).setOnClickListener {
-            val hostname = findViewById<EditText>(R.id.editTextHostname).text.toString()
-            val port = findViewById<EditText>(R.id.editTextPort).text.toString().toInt()
+            val hostname = if (findViewById<EditText>(R.id.editTextHostname).text.toString().isNotEmpty()) {
+                findViewById<EditText>(R.id.editTextHostname).text.toString()
+            } else {
+                DESTINATION_IP
+            }
+            val port = if (findViewById<EditText>(R.id.editTextPort).text.toString().isNotEmpty()) {
+                findViewById<EditText>(R.id.editTextPort).text.toString().toInt()
+            } else {
+                SOURCE_PORT
+            }
 
             // Convert hostname to IP address
             Thread {
-            val ip = resolveIPAddress(hostname)
+                val ip = resolveIPAddress(hostname)
 
-            // Update the destination IP and port
-            DESTINATION_IP = ip
-            DESTINATION_PORT = port
-            saveDestinationSettings(hostname,port)
-            forwardSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) //Change the global variable from within a thread without restarting the socket.
+                // Update the destination IP and port
+                DESTINATION_IP = ip
+                DESTINATION_PORT = port
+
+                saveDestinationSettings(hostname, port)
+                forwardSenderAddress = InetSocketAddress(
+                    DESTINATION_IP,
+                    DESTINATION_PORT
+                ) //Change the global variable from within a thread without restarting the socket.
             }.start()
         }
 
