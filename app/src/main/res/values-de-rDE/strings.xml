@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">MC Bedrock Connector</string>
+    <string name="action_settings">Einstellungen</string>
+    <!-- Strings used for fragments for navigation -->
+    <string name="first_fragment_label">Erstes Fragment</string>
+    <string name="second_fragment_label">Zweites Fragment</string>
+    <string name="next">Nächstes</string>
+    <string name="previous">Zurück</string>
+
+    <string name="hello_first_fragment">Hello first fragment</string>
+    <string name="hello_second_fragment">Hello second fragment. Arg: %1$s</string>
+
+    <string name="exit">Beenden</string>
+    <string name="hostname">Hostname</string>
+    <string name="port">Port</string>
+    <string name="confirm">Bestätigen</string>
+    <string name="restart">Neustart</string>
+    <string name="tutorial">Trage deine IP und den Port ein und drücke auf „Bestätigen“, um den Server zu ändern. Danach kannst du den Server in die Liste abspeichern, indem du auf das Plus-Symbol klickst. Der Server sollte unter LAN angezeigt werden. Das Gerät muss sich im gleichen Netzwerk befinden. Da sich diese Version noch in einem frühen Entwicklungsstadium befindet, kann es zu Fehlern kommen. Bei Verbindungsproblemen kann es helfen, die App neu zu starten oder nur die Sockets mit der „Neustart“-Schaltfläche neu zu starten. Damit die App im Hintergrund funktioniert, müssen möglicherweise die Energiesparoptionen der App in den Android-Einstellungen angepasst werden.</string>
+</resources>

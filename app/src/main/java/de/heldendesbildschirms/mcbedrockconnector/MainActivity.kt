@@ -17,14 +17,13 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.EditText
-import android.widget.Toast
+import android.widget.*
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import java.io.IOException
 import java.lang.Thread.sleep
 import java.net.*
@@ -33,6 +32,7 @@ import java.nio.channels.DatagramChannel
 import java.nio.channels.SelectionKey
 import java.nio.channels.Selector
 import java.util.concurrent.Callable
+import kotlin.system.exitProcess
 
 class MainActivity : AppCompatActivity() {
 
@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity() {
         private var DESTINATION_PORT = 19132
         private const val REQUEST_INTERNET_PERMISSION = 123
         private const val MAX_PACKET_SIZE = 65507
-        private const val  MAX_DATAGRAM_SIZE = 65507
+        private const val MAX_DATAGRAM_SIZE = 65507
         private const val PREF_NAME = "MyPrefs"
         private const val PREF_DESTINATION_IP = "destination_ip"
         private const val PREF_DESTINATION_PORT = "destination_port"
@@ -55,6 +55,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var myWakeLock: MyWakeLock
     private val CHANNEL_ID = "MC_Bedroock_Connect_Channel"
     var mNotificationManager: NotificationManager? = null
+    var isServerThreadRunning = true
+    var isServerThreadRunningInfo = true
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,7 +66,7 @@ class MainActivity : AppCompatActivity() {
         //myWakeLock = MyWakeLock(this)
         //.acquireWakeLock()
         val intent = Intent()
-        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
         if (!pm.isIgnoringBatteryOptimizations(packageName)) {
             intent.action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;
             intent.data = Uri.parse("package:" + packageName);
@@ -131,10 +133,10 @@ class MainActivity : AppCompatActivity() {
         //UdpForwarderTask(fromAddress, toAddress, ruleName)
 
         // Initialize SharedPreferences
-        sharedPreferences = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        sharedPreferences = getSharedPreferences(PREF_NAME, MODE_PRIVATE)
 
         // Load destination IP and port from SharedPreferences or use default values
-        val destinationIP = sharedPreferences.getString(PREF_DESTINATION_IP, DESTINATION_IP)
+        val destinationIP = sharedPreferences.getString(PREF_DESTINATION_IP, "")
         val destinationPort = sharedPreferences.getInt(PREF_DESTINATION_PORT, DESTINATION_PORT)
 
         // Set EditText fields to loaded values
@@ -168,12 +170,124 @@ class MainActivity : AppCompatActivity() {
             }.start()
         }
 
-        Thread {
-            //startnewUDPServer()
+        findViewById<Button>(R.id.exit).setOnClickListener {
+            finish()
+            exitProcess(0)
+        }
+
+        findViewById<Button>(R.id.restartServer).setOnClickListener {
+            Thread {
+                isServerThreadRunning = false
+                while (isServerThreadRunningInfo){
+                    sleep(1000)
+                    isServerThreadRunning = false
+                    Log.e(TAG, "Wait for Stop Server")
+                }
+                startnewUDPServerThreads()
+            }.start()
+        }
+
+        val listView = findViewById<ListView>(R.id.serverList)
+
+        val itemsServerIp = mutableListOf<String>()
+        val itemsServerPort = mutableListOf<Int>()
+        val serverListAdapter = ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, itemsServerIp)
+
+        //val destinationIPSave = sharedPreferences.getString("PREF_DESTINATION_IPS", "")
+        //val destinationIPSet = sharedPreferences.getStringSet("PREF_DESTINATION_IPS", emptySet())
+        val destinationPortSet = sharedPreferences.getStringSet("PREF_DESTINATION_PORTS", emptySet())
+        //val destinationIPList = sharedPreferences.getStringSet("PREF_DESTINATION_IPS", setOf<String>())!!.toMutableList()
+        //val destinationIPList = sharedPreferences.getStringSet("PREF_DESTINATION_IPS", emptySet())?.toMutableList() ?: mutableListOf()
+
+        // Retrieve the Set of strings from SharedPreferences
+        val mySet = sharedPreferences.getStringSet("PREF_DESTINATION_IPS", emptySet())
+
+        // Convert the Set of strings back to an ArrayList
+        val destinationIPListA = arrayListOf<String>()
+        destinationIPListA.addAll(mySet!!)
+        var destinationIPList = destinationIPListA.toMutableList()
+        val itemsIpAndPort = destinationIPList
+        //val destinationIPList = destinationIPSave?.toMutableList()?: mutableListOf()
+        //val destinationIPList = destinationIPSet?.toMutableList()
+        //val destinationIPList = destinationIPSet?.toMutableList() ?: mutableListOf()
+        val destinationPortList = destinationPortSet?.map { it.toInt() }?.toMutableList() ?: mutableListOf()
+
+        for (combined in destinationIPList) {
+            val parts = combined.split(":")
+            if (parts.size == 2) {
+                // Extrahiere IP-Adresse und Port und füge sie den entsprechenden Listen hinzu
+                itemsServerIp.add(parts[0])
+                itemsServerPort.add(parts[1].toInt())
+            }
+        }
+
+        //itemsServerIp.addAll(destinationIPList)
+        //itemsServerPort.addAll(destinationPortList)
+        /*if (destinationIPList.isNotEmpty()) {
+            for (ip in destinationIPList) {
+                itemsServerIp.add(ip.toString())
+            }
+        }
+        if (destinationPortList.isNotEmpty()) {
+            for (port in destinationPortList) {
+                itemsServerPort.add(port)
+            }
+        }*/
+        listView.adapter = serverListAdapter
+
+        listView.setOnItemClickListener { parent, view, i, id ->
+            findViewById<EditText>(R.id.editTextHostname).setText(itemsServerIp.get(i))
+            findViewById<EditText>(R.id.editTextPort).setText(itemsServerPort.get(i).toString())
+            Toast.makeText(this, "Clicked item : ${itemsServerIp.get(i)}",Toast.LENGTH_SHORT).show()
+
+        }
+
+        listView.setOnItemLongClickListener { parent, view, i, id ->
+            var hostname = "${itemsServerIp[i]}:${itemsServerPort[i].toString()}"
+            Toast.makeText(this, "Long clicked item : ${itemsServerIp.get(i)}", Toast.LENGTH_SHORT).show()
+            itemsServerIp.removeAt(i)
+            itemsServerPort.removeAt(i)
+            serverListAdapter.notifyDataSetChanged()
+
+            val editor = sharedPreferences.edit()
+            itemsIpAndPort.remove(hostname)
+            /*if (destinationIPList.isNotEmpty()) {
+                for (ia in itemsIpAndPort.indices) {
+                    if (itemsIpAndPort[ia] == hostname) {
+                        itemsIpAndPort.removeAt(hostname)
+                        break
+                    }
+                }
+            }*/
+            editor.putStringSet("PREF_DESTINATION_IPS", itemsIpAndPort.toSet())
+            editor.apply()
+            false
+        }
+
+        findViewById<FloatingActionButton>(R.id.addServer).setOnClickListener {
+            itemsServerIp.add("$DESTINATION_IP")
+            itemsServerPort.add(DESTINATION_PORT)
+            listView.adapter = serverListAdapter
+
+            val editor = sharedPreferences.edit()
+            for (i in itemsServerIp.indices) {
+                val combined = "${itemsServerIp[i]}:${itemsServerPort[i].toString()}"
+                itemsIpAndPort.add(combined)
+            }
+            editor.putStringSet("PREF_DESTINATION_IPS", itemsIpAndPort.toSet())
+            //editor.putStringSet("PREF_DESTINATION_IPS", myArrayList.toTypedArray().toList().toSet()) //Ob Array oder List oder sonst was, toSet geht nicht nur String. toSet sortiert auch wohl doppelte Einträge raus, weil Hash, deshalb geht es nicht.
+            editor.putStringSet("PREF_DESTINATION_PORTS", itemsServerPort.map { it.toString() }.toSet())
+            //val destinationPortSettest = sharedPreferences.getString("PREF_DESTINATION_IPSTest", "")
+            //Toast.makeText(this, "Long clicked item : ${itemsIpAndPort.toSet()}", Toast.LENGTH_SHORT).show()
+            editor.apply()
+        }
+
             startnewUDPServerThreads()
+        //Thread {
+            //startnewUDPServer()
             //startUDPServer()
             //startUDPServersThreads() //Das kann zwar alles beschleunigen, crasht aber, weill der Socket nicht empfangen und senden gleichzeitig kann und hier wird ein eigener erstellt in jeder Funktion, also so geht das auch nicht.
-        }.start()
+        //}.start()
     }
 
     private fun resolveIPAddress(hostname: String): String {
@@ -452,60 +566,71 @@ class MainActivity : AppCompatActivity() {
     var forwardSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
 
     private fun startnewUDPServerThreads() {
-        // Thread für den Empfang von Daten
-        val channel = DatagramChannel.open()
-        val forwardChannel = DatagramChannel.open()
-        //var forwardSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
-        var clinetSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
+        isServerThreadRunning = true
+        isServerThreadRunningInfo = true
+        Thread {
+            // Thread für den Empfang von Daten
+            val channel = DatagramChannel.open()
+            val forwardChannel = DatagramChannel.open()
+            //var forwardSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
+            var clinetSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
+            val receiveThread = Thread {
+                try {
+                    channel.socket().bind(InetSocketAddress(SOURCE_PORT))
+                    channel.socket().receiveBufferSize = MAX_PACKET_SIZE
+                    channel.configureBlocking(true)
+                    //channel.socket().soTimeout = 100 //Does not work to prevent reception stop. For this to work at all, channel must be at 100 and forwardChannel must be at 1000.
 
-        val receiveThread = Thread {
-            try {
-                channel.socket().bind(InetSocketAddress(SOURCE_PORT))
-                channel.socket().receiveBufferSize = MAX_PACKET_SIZE
-                channel.configureBlocking(true)
-                //channel.socket().soTimeout = 100 //Does not work to prevent reception stop. For this to work at all, channel must be at 100 and forwardChannel must be at 1000.
+                    val buffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
 
-                val buffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
-
-                while (true) {
-                    buffer.clear()
-                    val senderAddress = channel.receive(buffer)
-                    senderAddress?.let {
-                        clinetSenderAddress = senderAddress
-                        buffer.flip()
-                        forwardChannel.send(buffer, forwardSenderAddress)
+                    while (isServerThreadRunning) {
+                        buffer.clear()
+                        val senderAddress = channel.receive(buffer)
+                        senderAddress?.let {
+                            clinetSenderAddress = senderAddress
+                            buffer.flip()
+                            forwardChannel.send(buffer, forwardSenderAddress)
+                        }
+                        //sleep(1)
                     }
+
+                    channel.close()
+                    isServerThreadRunningInfo = false
+                } catch (e: IOException) {
+                    e.printStackTrace()
+                    Log.d(TAG, "Error occurred")
+                    channel.close()
+                    isServerThreadRunningInfo = false
                 }
-            } catch (e: IOException) {
-                e.printStackTrace()
-                Log.d(TAG, "Error occurred")
             }
-        }
-        receiveThread.start()
+            receiveThread.start()
 
-        // Thread für das Weiterleiten von Daten
-        val forwardThread = Thread {
-            try {
-                forwardChannel.socket().receiveBufferSize = MAX_PACKET_SIZE
-                forwardChannel.configureBlocking(true)
-                forwardChannel.socket().soTimeout = 1000
+            // Thread für das Weiterleiten von Daten
+            val forwardThread = Thread {
+                try {
+                    forwardChannel.socket().receiveBufferSize = MAX_PACKET_SIZE
+                    forwardChannel.configureBlocking(true)
+                    forwardChannel.socket().soTimeout = 1000
 
-                val receiveBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+                    val receiveBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
 
-                while (true) {
-                    receiveBuffer.clear()
-                    val forwardSenderAddressTemp = forwardChannel.receive(receiveBuffer)
-                    forwardSenderAddressTemp?.let {
-                        receiveBuffer.flip()
-                        channel.send(receiveBuffer, clinetSenderAddress)
+                    while (isServerThreadRunning) {
+                        receiveBuffer.clear()
+                        val forwardSenderAddressTemp = forwardChannel.receive(receiveBuffer)
+                        forwardSenderAddressTemp?.let {
+                            receiveBuffer.flip()
+                            channel.send(receiveBuffer, clinetSenderAddress)
+                        }
+                        //sleep(1)
                     }
+                    forwardChannel.close()
+                } catch (e: IOException) {
+                    e.printStackTrace()
+                    Log.d(TAG, "Error occurred")
                 }
-            } catch (e: IOException) {
-                e.printStackTrace()
-                Log.d(TAG, "Error occurred")
             }
-        }
-        forwardThread.start()
+            forwardThread.start()
+        }.start()
     }
 
     private fun startnewUDPServer() {

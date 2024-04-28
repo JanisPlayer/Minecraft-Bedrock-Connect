@@ -9,4 +9,11 @@
 
     <string name="hello_first_fragment">Hello first fragment</string>
     <string name="hello_second_fragment">Hello second fragment. Arg: %1$s</string>
+
+    <string name="exit">Exit</string>
+    <string name="hostname">Hostname</string>
+    <string name="port">Port</string>
+    <string name="confirm">Confirm</string>
+    <string name="restart">Restart</string>
+    <string name="tutorial">Enter your IP and port, then press "Confirm" to change the server. After that, you can save the server to the list by clicking on the plus symbol. The server should appear under LAN. The device must be on the same network. Since this version is still in an early development stage, errors may occur. In case of connection problems, restarting the app or just the sockets with the "Restart" button may help. To enable the app to work in the background, you may need to adjust the apps power-saving options in the Android settings.</string>
 </resources>
