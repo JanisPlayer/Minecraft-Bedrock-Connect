@@ -213,13 +213,15 @@ class MainActivity : AppCompatActivity() {
         val destinationPortList = destinationPortSet?.map { it.toInt() }?.toMutableList() ?: mutableListOf()
 
         for (combined in destinationIPList) {
-            val parts = combined.split(":")
-            if (parts.size == 2) {
-                // Extrahiere IP-Adresse und Port und füge sie den entsprechenden Listen hinzu
-                itemsServerIp.add(parts[0])
-                itemsServerPort.add(parts[1].toInt())
+            val lastColonIndex = combined.lastIndexOf(":")
+            if (lastColonIndex != -1) {
+                val ip = combined.substring(0, lastColonIndex)
+                val port = combined.substring(lastColonIndex + 1)
+                itemsServerIp.add(ip)
+                itemsServerPort.add(port.toInt())
             }
         }
+
 
         //itemsServerIp.addAll(destinationIPList)
         //itemsServerPort.addAll(destinationPortList)
