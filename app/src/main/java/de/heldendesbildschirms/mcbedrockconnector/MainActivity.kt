@@ -149,7 +149,11 @@ class MainActivity : AppCompatActivity() {
                 DESTINATION_IP
             }
             val port = if (findViewById<EditText>(R.id.editTextPort).text.toString().isNotEmpty()) {
-                findViewById<EditText>(R.id.editTextPort).text.toString().toInt()
+                if (findViewById<EditText>(R.id.editTextPort).text.toString().toInt() <= 65535 ) {
+                    findViewById<EditText>(R.id.editTextPort).text.toString().toInt()
+                } else {
+                    SOURCE_PORT
+                }
             } else {
                 SOURCE_PORT
             }
