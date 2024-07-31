@@ -1,3 +1,4 @@
+https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/raw/main/Preview.webp
 # APP:  
 https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/tree/master
 
