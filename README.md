@@ -2,6 +2,10 @@
 # APP:  
 https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/tree/master
 
+# Last Build:
+[Minecraft-Bedrock-Connect.apk
+](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/raw/main/Minecraft-Bedrock-Connect.apk)
+
 # Minecraft-Bedrock-Connect
 Eine Android App die es ermöglicht einen Server ins LAN weiterzuleiten mit Paket weiterleitung.
 Das kann nützlich für Konsolen wie Xbox, Playstation, Switch, sein um eine Verbindung zu externen Servern aufzubauen.
