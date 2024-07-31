@@ -1,0 +1,48 @@
+EN:
+
+App-Name *
+MC Bedrock Connect
+So erscheint deine App bei Google Play 
+
+Kurze Beschreibung *
+This app allows you to connect to external Bedrock servers over LAN.
+Eine kurze Beschreibung deiner App. Nutzer können sie maximieren, um die komplette Beschreibung zu sehen. 
+
+Vollständige Beschreibung *
+This app is a simple UDP packet forwarding. All packets arriving at port 19132 are forwarded to the destination server, and the response is then sent back to the client.
+
+This system has advantages and disadvantages. On the one hand, it significantly simplifies app development. The goal of this app is to become an ad-free and maintenance-friendly open-source community app. If you are a developer and would like to support this concept, you can contribute your code as a pull request. GitHub: https://github.com/JanisPlayer/Minecraft-Bedrock-Connect
+
+In return, the Minecraft community gets an app that is free of excessive advertising, open, and allows anyone to contribute without much hassle. However, the app is still in a very error-prone stage.
+
+Note: The connection may not be stable on the first start, and delays, disconnects, and performance issues leading to excessive load may occur. The entire app code is still improvised, making it an alpha version. For you, it's an early access version.
+
+Unfortunately, as mentioned, I'm just a hobby developer. Support is welcome.
+
+---
+
+DE:
+
+App-Name *
+MC Bedrock Connect
+So erscheint deine App bei Google Play 
+
+Kurze Beschreibung *
+Diese App ermöglicht es dir, über LAN auf externe Bedrock-Server zu verbinden.
+Eine kurze Beschreibung deiner App. Nutzer können sie maximieren, um die komplette Beschreibung zu sehen. 
+
+Vollständige Beschreibung *
+Es handelt sich bei dieser App um eine einfache UDP-Paketweiterleitung. Alle Pakete, die an den Port 19132 gelangen, werden an den Zielserver weitergeleitet. Die Antwort kommt dann wieder zurück zum Client. 
+
+Dieses System hat Vor- und Nachteile. Zum einen wird so die App-Entwicklung erheblich vereinfacht. Das Ziel dieser App ist es, eine werbefreie und wartungsfreundliche Open-Source-Community-App zu werden. Wenn du Entwickler bist und dieses Konzept fördern möchtest, kannst du deinen Beitrag als Pull Request leisten. GitHub: https://github.com/JanisPlayer/Minecraft-Bedrock-Connect 
+
+Im Gegenzug hat die Minecraft-Community eine App, die ohne viel Werbung auskommt, offen ist und an der jeder mitentwickeln kann. Ihr wisst genau, was die App macht, ohne viel Aufwand. Die App befindet sich jedoch noch in einem sehr fehleranfälligen Stadium. 
+
+Hinweis: Es kann sein, dass die Verbindung beim ersten Start nicht stabil ist, es können Verzögerungen und Disconnects auftreten, sowie Performance-Probleme, die zu einer zu starken Auslastung führen können. Der gesamte App-Code ist bisher noch improvisiert, also eine Alpha-Version. Für euch ist es eine Early-Access-Version. 
+
+Leider bin ich, wie gesagt, nur ein Hobbyentwickler. Unterstützung ist willkommen.
+
+---
+
+Diese Beschreibung wurde abgelehnt, mehrfach. Aus dem Grund habe ich irgendwann die Lust an der Entwicklung dieser App verloren.
+Der Store-Eintrag Ihrer App enthält Wörter, Wortgruppen, Bilder oder Videos, zu deren Verwendung Sie möglicherweise nicht berechtigt sind. Weitere Informationen dazu, wo wir dieses Problem im Store-Eintrag Ihrer App gefunden haben, finden Sie nachstehend unter „Problemdetails“.
