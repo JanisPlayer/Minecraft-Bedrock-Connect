@@ -1,3 +1,4 @@
+#from scapy.all import IP, UDP, send
 import socket
 import random
 
@@ -100,6 +101,7 @@ while True:
         response.extend(len(serverId).to_bytes(2, 'big'))
         response.extend(serverId)
         server.sendto(response, address)
+        #send(IP(src="164.68.125.80", dst=address[0]) / UDP(sport=19132, dport=address[1]) / response)
     # Antwort auf Open Connection Request 1 senden
     elif isinstance(packet, OpenConnectionRequest1):
         response = bytearray()
