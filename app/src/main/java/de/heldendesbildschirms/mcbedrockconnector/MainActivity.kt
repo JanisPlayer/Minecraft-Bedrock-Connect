@@ -9,8 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
-import android.os.AsyncTask
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
@@ -24,15 +25,19 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import java.io.IOException
+import java.io.*
 import java.lang.Thread.sleep
 import java.net.*
 import java.nio.ByteBuffer
 import java.nio.channels.DatagramChannel
-import java.nio.channels.SelectionKey
-import java.nio.channels.Selector
-import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 import kotlin.system.exitProcess
+
+object ServerState { // If another solution is to be found, it won't work this way either.
+    var isServerThreadRunning = false
+    var isServerThreadRunningInfo1 = false
+    var isServerThreadRunningInfo2 = false
+}
 
 class MainActivity : AppCompatActivity() {
 
@@ -41,7 +46,7 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         private const val TAG = "MainActivity"
         private const val SOURCE_PORT = 19132
-        private var DESTINATION_IP = "164.68.125.80"
+        private var DESTINATION_IP = "104.238.130.180"
         private var DESTINATION_PORT = 19132
         private const val REQUEST_INTERNET_PERMISSION = 123
         private const val MAX_PACKET_SIZE = 65507
@@ -49,14 +54,15 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_NAME = "MyPrefs"
         private const val PREF_DESTINATION_IP = "destination_ip"
         private const val PREF_DESTINATION_PORT = "destination_port"
+        var isServerThreadRunning = ServerState.isServerThreadRunning
+        var isServerThreadRunningInfo1 = ServerState.isServerThreadRunningInfo1
+        var isServerThreadRunningInfo2 = ServerState.isServerThreadRunningInfo2
     }
 
     private lateinit var sharedPreferences: SharedPreferences
     private lateinit var myWakeLock: MyWakeLock
     private val CHANNEL_ID = "MC_Bedroock_Connect_Channel"
     var mNotificationManager: NotificationManager? = null
-    var isServerThreadRunning = true
-    var isServerThreadRunningInfo = true
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,16 +78,17 @@ class MainActivity : AppCompatActivity() {
             intent.data = Uri.parse("package:" + packageName);
             this.startActivity(intent);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            Toast.makeText(this, "Not allowed isIgnoringBatteryOptimizations", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Not allowed isIgnoringBatteryOptimizations", Toast.LENGTH_SHORT)
+                .show()
 
-            val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle(CHANNEL_ID)
-                .setContentText("Background activity is restricted on this device.")
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setAutoCancel(true)
+            val notificationBuilder =
+                NotificationCompat.Builder(this, CHANNEL_ID).setContentTitle(CHANNEL_ID)
+                    .setContentText("Background activity is restricted on this device.")
+                    .setSmallIcon(R.drawable.ic_launcher_foreground).setAutoCancel(true)
 
             val notificationIntent = Intent(Settings.ACTION_APPLICATION_SETTINGS)
-            val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)
+            val pendingIntent =
+                PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)
 
             val expandedNotificationText = """
         Background activity is restricted on this app.
@@ -107,15 +114,12 @@ class MainActivity : AppCompatActivity() {
 
         // Überprüfen, ob die Berechtigung zur Laufzeit angefordert werden muss
         if (ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.INTERNET
+                this, Manifest.permission.INTERNET
             ) != PackageManager.PERMISSION_GRANTED
         ) {
             // Berechtigung zur Laufzeit anfordern
             ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.INTERNET),
-                REQUEST_INTERNET_PERMISSION
+                this, arrayOf(Manifest.permission.INTERNET), REQUEST_INTERNET_PERMISSION
             )
         }
 
@@ -136,20 +140,21 @@ class MainActivity : AppCompatActivity() {
         sharedPreferences = getSharedPreferences(PREF_NAME, MODE_PRIVATE)
 
         // Load destination IP and port from SharedPreferences or use default values
-        val destinationIP = sharedPreferences.getString(PREF_DESTINATION_IP, "")
+        val destinationIP = sharedPreferences.getString(PREF_DESTINATION_IP, DESTINATION_IP)
         val destinationPort = sharedPreferences.getInt(PREF_DESTINATION_PORT, DESTINATION_PORT)
 
         // Set EditText fields to loaded values
         findViewById<EditText>(R.id.editTextHostname).setText(destinationIP)
         findViewById<EditText>(R.id.editTextPort).setText(destinationPort.toString())
         findViewById<Button>(R.id.buttonConfirm).setOnClickListener {
-            val hostname = if (findViewById<EditText>(R.id.editTextHostname).text.toString().isNotEmpty()) {
-                findViewById<EditText>(R.id.editTextHostname).text.toString()
-            } else {
-                DESTINATION_IP
-            }
+            val hostname =
+                if (findViewById<EditText>(R.id.editTextHostname).text.toString().isNotEmpty()) {
+                    findViewById<EditText>(R.id.editTextHostname).text.toString()
+                } else {
+                    DESTINATION_IP
+                }
             val port = if (findViewById<EditText>(R.id.editTextPort).text.toString().isNotEmpty()) {
-                if (findViewById<EditText>(R.id.editTextPort).text.toString().toInt() <= 65535 ) {
+                if (findViewById<EditText>(R.id.editTextPort).text.toString().toInt() <= 65535) {
                     findViewById<EditText>(R.id.editTextPort).text.toString().toInt()
                 } else {
                     SOURCE_PORT
@@ -168,26 +173,45 @@ class MainActivity : AppCompatActivity() {
 
                 saveDestinationSettings(hostname, port)
                 forwardSenderAddress = InetSocketAddress(
-                    DESTINATION_IP,
-                    DESTINATION_PORT
+                    DESTINATION_IP, DESTINATION_PORT
                 ) //Change the global variable from within a thread without restarting the socket.
             }.start()
         }
 
         findViewById<Button>(R.id.exit).setOnClickListener {
+            isServerThreadRunning = false
+            executorService.shutdown()
             finish()
             exitProcess(0)
+        }
+
+        findViewById<Button>(R.id.start_stop).setOnClickListener {
+            Thread {
+                if (isServerThreadRunningInfo1 && isServerThreadRunningInfo2) {
+                    isServerThreadRunning = false
+                    while (isServerThreadRunningInfo1 && isServerThreadRunningInfo2) {
+                        sleep(1000)
+                        isServerThreadRunning = false
+                        Log.e(TAG, "Wait for Stop Server")
+                    }
+                    findViewById<Button>(R.id.start_stop).text = "Start"
+                } else {
+                    startnewUDPServerThreads()
+                    findViewById<Button>(R.id.start_stop).text = "Stop"
+                }
+            }.start()
         }
 
         findViewById<Button>(R.id.restartServer).setOnClickListener {
             Thread {
                 isServerThreadRunning = false
-                while (isServerThreadRunningInfo){
+                while (isServerThreadRunningInfo1 && isServerThreadRunningInfo2) {
                     sleep(1000)
                     isServerThreadRunning = false
                     Log.e(TAG, "Wait for Stop Server")
                 }
                 startnewUDPServerThreads()
+                findViewById<Button>(R.id.start_stop).text = "Stop"
             }.start()
         }
 
@@ -195,11 +219,13 @@ class MainActivity : AppCompatActivity() {
 
         val itemsServerIp = mutableListOf<String>()
         val itemsServerPort = mutableListOf<Int>()
-        val serverListAdapter = ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, itemsServerIp)
+        val serverListAdapter =
+            ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, itemsServerIp)
 
         //val destinationIPSave = sharedPreferences.getString("PREF_DESTINATION_IPS", "")
         //val destinationIPSet = sharedPreferences.getStringSet("PREF_DESTINATION_IPS", emptySet())
-        val destinationPortSet = sharedPreferences.getStringSet("PREF_DESTINATION_PORTS", emptySet())
+        val destinationPortSet =
+            sharedPreferences.getStringSet("PREF_DESTINATION_PORTS", emptySet())
         //val destinationIPList = sharedPreferences.getStringSet("PREF_DESTINATION_IPS", setOf<String>())!!.toMutableList()
         //val destinationIPList = sharedPreferences.getStringSet("PREF_DESTINATION_IPS", emptySet())?.toMutableList() ?: mutableListOf()
 
@@ -214,7 +240,8 @@ class MainActivity : AppCompatActivity() {
         //val destinationIPList = destinationIPSave?.toMutableList()?: mutableListOf()
         //val destinationIPList = destinationIPSet?.toMutableList()
         //val destinationIPList = destinationIPSet?.toMutableList() ?: mutableListOf()
-        val destinationPortList = destinationPortSet?.map { it.toInt() }?.toMutableList() ?: mutableListOf()
+        val destinationPortList =
+            destinationPortSet?.map { it.toInt() }?.toMutableList() ?: mutableListOf()
 
         for (combined in destinationIPList) {
             val lastColonIndex = combined.lastIndexOf(":")
@@ -244,13 +271,14 @@ class MainActivity : AppCompatActivity() {
         listView.setOnItemClickListener { parent, view, i, id ->
             findViewById<EditText>(R.id.editTextHostname).setText(itemsServerIp.get(i))
             findViewById<EditText>(R.id.editTextPort).setText(itemsServerPort.get(i).toString())
-            Toast.makeText(this, "Clicked item : ${itemsServerIp.get(i)}",Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Clicked item : ${itemsServerIp.get(i)}", Toast.LENGTH_SHORT)
+                .show()
 
         }
 
         listView.setOnItemLongClickListener { parent, view, i, id ->
             var hostname = "${itemsServerIp[i]}:${itemsServerPort[i].toString()}"
-            Toast.makeText(this, "Long clicked item : ${itemsServerIp.get(i)}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Remove: ${itemsServerIp.get(i)}", Toast.LENGTH_SHORT).show()
             itemsServerIp.removeAt(i)
             itemsServerPort.removeAt(i)
             serverListAdapter.notifyDataSetChanged()
@@ -282,18 +310,77 @@ class MainActivity : AppCompatActivity() {
             }
             editor.putStringSet("PREF_DESTINATION_IPS", itemsIpAndPort.toSet())
             //editor.putStringSet("PREF_DESTINATION_IPS", myArrayList.toTypedArray().toList().toSet()) //Ob Array oder List oder sonst was, toSet geht nicht nur String. toSet sortiert auch wohl doppelte Einträge raus, weil Hash, deshalb geht es nicht.
-            editor.putStringSet("PREF_DESTINATION_PORTS", itemsServerPort.map { it.toString() }.toSet())
+            editor.putStringSet(
+                "PREF_DESTINATION_PORTS", itemsServerPort.map { it.toString() }.toSet()
+            )
             //val destinationPortSettest = sharedPreferences.getString("PREF_DESTINATION_IPSTest", "")
             //Toast.makeText(this, "Long clicked item : ${itemsIpAndPort.toSet()}", Toast.LENGTH_SHORT).show()
             editor.apply()
         }
 
+        /*val fromPort = 19132
+        val toIp = "164.68.125.80"  // Zielserver IP
+        val toPort = 19132
+        Thread {
+            val forwarder = UdpForwarder(fromPort, toIp, toPort)
+            forwarder.start()
+        }.start()
+
+        val forwarder = UdpForwarder()
+
+        Thread {
+            forwarder.startForwarding(
+                localPort = 19132,
+                remoteIp = "164.68.125.80",
+                remotePort = 19132
+            )
+        }
+        */
+        /*Thread {
+            udpForwarder.startForwarding(SOURCE_PORT, DESTINATION_IP, DESTINATION_PORT)
+        }.start()*/
+
+        if (!(isServerThreadRunningInfo1 && isServerThreadRunningInfo2)) {
             startnewUDPServerThreads()
+            findViewById<Button>(R.id.start_stop).text = "Stop"
+        }
+
+        //startSocat(SOURCE_PORT,DESTINATION_IP,DESTINATION_PORT);
+
         //Thread {
-            //startnewUDPServer()
-            //startUDPServer()
-            //startUDPServersThreads() //Das kann zwar alles beschleunigen, crasht aber, weill der Socket nicht empfangen und senden gleichzeitig kann und hier wird ein eigener erstellt in jeder Funktion, also so geht das auch nicht.
+        //startnewUDPServer()
+        //startOptimizedUDPServer()
+        //startnewUDPServer()
+        //startUDPServer()
+        //startUDPServersThreads() //Das kann zwar alles beschleunigen, crasht aber, weill der Socket nicht empfangen und senden gleichzeitig kann und hier wird ein eigener erstellt in jeder Funktion, also so geht das auch nicht.
         //}.start()
+
+        if (isServerThreadRunningInfo1 && isServerThreadRunningInfo2) {
+            findViewById<Button>(R.id.start_stop).text = "Stop"
+        } else {
+            findViewById<Button>(R.id.start_stop).text = "Start"
+        }
+
+        val isFirstStart = sharedPreferences.getBoolean("is_first_start", true)
+
+        if (isFirstStart) {
+            // Füge Elemente zur Liste hinzu
+            itemsServerIp.add("$DESTINATION_IP")
+            itemsServerPort.add(DESTINATION_PORT)
+            listView.adapter = serverListAdapter
+
+            val editor = sharedPreferences.edit()
+            for (i in itemsServerIp.indices) {
+                val combined = "${itemsServerIp[i]}:${itemsServerPort[i].toString()}"
+                itemsIpAndPort.add(combined)
+            }
+            editor.putStringSet("PREF_DESTINATION_IPS", itemsIpAndPort.toSet())
+            editor.putStringSet(
+                "PREF_DESTINATION_PORTS", itemsServerPort.map { it.toString() }.toSet()
+            )
+            editor.putBoolean("is_first_start", false)
+            editor.apply()
+        }
     }
 
     private fun resolveIPAddress(hostname: String): String {
@@ -306,6 +393,33 @@ class MainActivity : AppCompatActivity() {
             // Return default IP address if hostname resolution fails
             DESTINATION_IP
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // Speichern der Variablen
+        outState.putBoolean("isServerThreadRunning", isServerThreadRunning)
+        outState.putBoolean("isServerThreadRunningInfo1", isServerThreadRunningInfo1)
+        outState.putBoolean("isServerThreadRunningInfo2", isServerThreadRunningInfo2)
+        ServerState.isServerThreadRunning = isServerThreadRunning
+        ServerState.isServerThreadRunningInfo1 = isServerThreadRunningInfo1
+        ServerState.isServerThreadRunningInfo2 = isServerThreadRunningInfo2
+        Log.d(
+            TAG, "Test2"
+        )
+    }
+
+    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
+        super.onRestoreInstanceState(savedInstanceState)
+        // Wiederherstellen der Variablen
+        isServerThreadRunning = savedInstanceState.getBoolean("isServerThreadRunning", false)
+        isServerThreadRunningInfo1 =
+            savedInstanceState.getBoolean("isServerThreadRunningInfo1", false)
+        isServerThreadRunningInfo2 =
+            savedInstanceState.getBoolean("isServerThreadRunningInfo2", false)
+        Log.d(
+            TAG, "Test1"
+        )
     }
 
     private fun saveDestinationSettings(ip: String, port: Int) {
@@ -333,8 +447,7 @@ class MainActivity : AppCompatActivity() {
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun createChannel() {
-        var mNotificationManager =
-            getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        var mNotificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
         val name = "MC Bedrock Connect"
         val importance = NotificationManager.IMPORTANCE_LOW
@@ -357,9 +470,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val serverSocketThread = DatagramSocket(0, InetAddress.getByName("0.0.0.0"))
+
     //private val serverSocketThread = DatagramSocket(SOURCE_PORT, InetAddress.getByName("0.0.0.0"))
     private val clientSocketThread = DatagramSocket()
-    private val packetServerThread = DatagramPacket(ByteArray(65000), 65000, InetAddress.getByName(DESTINATION_IP), DESTINATION_PORT)
+    private val packetServerThread = DatagramPacket(
+        ByteArray(65000), 65000, InetAddress.getByName(DESTINATION_IP), DESTINATION_PORT
+    )
 
     private fun startUDPServerThread() {
         var maxPaketSize = 65000
@@ -369,12 +485,14 @@ class MainActivity : AppCompatActivity() {
                 serverSocketThread.soTimeout = timeout
                 //val packet = DatagramPacket(ByteArray(maxPaketSize), maxPaketSize)
                 //if (clientSocketThread.isConnected){
-                    serverSocketThread.receive(packetServerThread)
-                    //val sendPacket = DatagramPacket(packet.data, packet.length, InetAddress.getByName(DESTINATION_IP), DESTINATION_PORT)
-                    clientSocketThread.send(packetServerThread)
-                Log.d(TAG, "Senden die empfangenen Daten an den Zielserver und warte auf eine Antwort")
+                serverSocketThread.receive(packetServerThread)
+                //val sendPacket = DatagramPacket(packet.data, packet.length, InetAddress.getByName(DESTINATION_IP), DESTINATION_PORT)
+                clientSocketThread.send(packetServerThread)
+                Log.d(
+                    TAG, "Senden die empfangenen Daten an den Zielserver und warte auf eine Antwort"
+                )
                 //}
-            }  catch (e: Exception) {
+            } catch (e: Exception) {
                 //Log.d(TAG, "$e")
             } finally {
             }
@@ -385,7 +503,9 @@ class MainActivity : AppCompatActivity() {
         var maxPaketSize = 65000
         var timeout = 300
         while (true) {
-            Log.d(TAG, "Senden die empfangenen${packetServerThread.address}") //Nicht die gleiche Adreese.
+            Log.d(
+                TAG, "Senden die empfangenen${packetServerThread.address}"
+            ) //Nicht die gleiche Adreese.
             try {
                 clientSocketThread.soTimeout = timeout
                 val receivePacket = DatagramPacket(
@@ -400,7 +520,9 @@ class MainActivity : AppCompatActivity() {
                 Log.d(TAG, "Senden die empfangenen")
 
                 serverSocketThread.send(receivePacket)
-                Log.d(TAG, "Senden die empfangenen Daten an den Zielserver und warte auf eine Antwort")
+                Log.d(
+                    TAG, "Senden die empfangenen Daten an den Zielserver und warte auf eine Antwort"
+                )
             } catch (e: Exception) {
                 //Log.d(TAG, "$e")
             } finally {
@@ -418,14 +540,17 @@ class MainActivity : AppCompatActivity() {
         serverSocket.send(startUDPClientThreadVorlage(packet))
     }
 
-    private fun startUDPClientThreadVorlage(packet: DatagramPacket):DatagramPacket {
+    private fun startUDPClientThreadVorlage(packet: DatagramPacket): DatagramPacket {
         var maxPaketSize = 65507
         var timeout = 300
-        val clientSocket  = DatagramSocket()
+        val clientSocket = DatagramSocket()
         clientSocket.soTimeout = timeout
-        val sendPacket = DatagramPacket(packet.data, packet.length, InetAddress.getByName(DESTINATION_IP), DESTINATION_PORT)
+        val sendPacket = DatagramPacket(
+            packet.data, packet.length, InetAddress.getByName(DESTINATION_IP), DESTINATION_PORT
+        )
         clientSocket.send(sendPacket)
-        val receivePacket = DatagramPacket(ByteArray(maxPaketSize), maxPaketSize, packet.address, packet.port)
+        val receivePacket =
+            DatagramPacket(ByteArray(maxPaketSize), maxPaketSize, packet.address, packet.port)
         clientSocket.receive(receivePacket)
         receivePacket.address = packet.address
         receivePacket.port = packet.port
@@ -437,7 +562,7 @@ class MainActivity : AppCompatActivity() {
         try {
             // Erstelle einen DatagrammSocket zum Empfangen von UDP-Paketen auf dem Quellport
             val serverSocket = DatagramSocket(SOURCE_PORT, InetAddress.getByName("0.0.0.0"))
-            val clientSocket  = DatagramSocket()
+            val clientSocket = DatagramSocket()
             // Endlosschleife zum kontinuierlichen Empfangen von Paketen
             var maxPaketSize = 65000
             var timeout = 100
@@ -475,7 +600,12 @@ class MainActivity : AppCompatActivity() {
                     // Erstelle einen Socket zum Senden von Daten an den Zielserver
 
                     // Sende die Daten an den Zielserver
-                    val sendPacket = DatagramPacket(packet.data, packet.length, InetAddress.getByName(DESTINATION_IP), DESTINATION_PORT)
+                    val sendPacket = DatagramPacket(
+                        packet.data,
+                        packet.length,
+                        InetAddress.getByName(DESTINATION_IP),
+                        DESTINATION_PORT
+                    )
                     //val hexSendData = sendData.joinToString(separator = " ") { byte -> String.format("%02X", byte) }
                     //Log.d(TAG, "Send UDP packet: $hexSendData")
                     //Thread { //<---
@@ -483,7 +613,9 @@ class MainActivity : AppCompatActivity() {
                     //}.start()
                     // Empfange die Antwort vom Zielserver
                     //val receiveData = ByteArray(maxPaketSize)
-                    val receivePacket = DatagramPacket(ByteArray(maxPaketSize), maxPaketSize, packet.address, packet.port)
+                    val receivePacket = DatagramPacket(
+                        ByteArray(maxPaketSize), maxPaketSize, packet.address, packet.port
+                    )
                     clientSocket.receive(receivePacket)
                     // Extrahiere die empfangenen Bytes
                     //val receivedBytes = receivePacket.data.copyOf(receivePacket.length)
@@ -500,7 +632,10 @@ class MainActivity : AppCompatActivity() {
                     serverSocket.send(receivePacket)
                     //}.start() // <--- Führt zum Crash.
                 } catch (e: Exception) {
-                    Log.d(TAG, "Error UDP packet $debugVar ${serverSocket.isClosed} ${serverSocket.isConnected} ${clientSocket.isConnected}")
+                    Log.d(
+                        TAG,
+                        "Error UDP packet $debugVar ${serverSocket.isClosed} ${serverSocket.isConnected} ${clientSocket.isConnected}"
+                    )
                     //serverSocket.bind( InetAddress.getByName("0.0.0.0")
                     //clientSocket?.close()
                     //val serverSocket = DatagramSocket(SOURCE_PORT, InetAddress.getByName("0.0.0.0"))
@@ -517,13 +652,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun sendAndReceiveData(data: ByteArray): ByteArray {
-        val clientSocket  = DatagramSocket()
+        val clientSocket = DatagramSocket()
         return try {
             // Erstelle einen Socket zum Senden von Daten an den Zielserver
 
             // Sende die Daten an den Zielserver
             val sendData = data
-            val sendPacket = DatagramPacket(sendData, sendData.size, InetAddress.getByName(DESTINATION_IP), DESTINATION_PORT)
+            val sendPacket = DatagramPacket(
+                sendData, sendData.size, InetAddress.getByName(DESTINATION_IP), DESTINATION_PORT
+            )
             //val hexSendData = sendData.joinToString(separator = " ") { byte -> String.format("%02X", byte) }
             //Log.d(TAG, "Send UDP packet: $hexSendData")
             clientSocket.send(sendPacket)
@@ -571,42 +708,64 @@ class MainActivity : AppCompatActivity() {
 
     var forwardSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
 
+    private val executorService = Executors.newFixedThreadPool(2)
+
     private fun startnewUDPServerThreads() {
         isServerThreadRunning = true
-        isServerThreadRunningInfo = true
-        Thread {
+        isServerThreadRunningInfo1 = true
+        isServerThreadRunningInfo2 = true
+        executorService.submit {
+            val channel = DatagramChannel.open()
+            val forwardChannel = DatagramChannel.open()
+            var clinetSenderAddress =
+                InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
+
+            /*
             // Thread für den Empfang von Daten
             val channel = DatagramChannel.open()
             val forwardChannel = DatagramChannel.open()
             //var forwardSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
             var clinetSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
+             */
+
             val receiveThread = Thread {
                 try {
                     channel.socket().bind(InetSocketAddress(SOURCE_PORT))
                     channel.socket().receiveBufferSize = MAX_PACKET_SIZE
-                    channel.configureBlocking(true)
+                    channel.socket().sendBufferSize = MAX_PACKET_SIZE
+                    //channel.configureBlocking(true)
                     //channel.socket().soTimeout = 100 //Does not work to prevent reception stop. For this to work at all, channel must be at 100 and forwardChannel must be at 1000.
 
-                    val buffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+                    val buffer = ByteBuffer.allocateDirect(MAX_PACKET_SIZE)
 
+                    //forwardChannel.connect(forwardSenderAddress)
                     while (isServerThreadRunning) {
-                        buffer.clear()
+                        //buffer.clear()
                         val senderAddress = channel.receive(buffer)
                         senderAddress?.let {
+                            // Starte die Zeitmessung
+                            //val startTime = System.nanoTime()
                             clinetSenderAddress = senderAddress
                             buffer.flip()
+                            //forwardChannel.write(buffer)
                             forwardChannel.send(buffer, forwardSenderAddress)
+                            buffer.clear()
+                            // Stoppe die Zeitmessung und berechne die Dauer
+                            //val duration = System.nanoTime() - startTime
+                            // Gib die Dauer in Millisekunden aus
+                            //Log.d(TAG, "Client Paket gesendet in ${duration / 1_000_000} ms")
                         }
                         //sleep(1)
                     }
-
                     channel.close()
-                    isServerThreadRunningInfo = false
+                    forwardChannel.close()
+                    isServerThreadRunningInfo1 = false
                 } catch (e: IOException) {
+                    channel.close()
+                    forwardChannel.close()
                     e.printStackTrace()
                     Log.d(TAG, "Error occurred")
-                    channel.close()
-                    isServerThreadRunningInfo = false
+                    isServerThreadRunningInfo1 = false
                 }
             }
             receiveThread.start()
@@ -615,30 +774,123 @@ class MainActivity : AppCompatActivity() {
             val forwardThread = Thread {
                 try {
                     forwardChannel.socket().receiveBufferSize = MAX_PACKET_SIZE
-                    forwardChannel.configureBlocking(true)
-                    forwardChannel.socket().soTimeout = 1000
+                    forwardChannel.socket().sendBufferSize = MAX_PACKET_SIZE
+                    //forwardChannel.configureBlocking(true)
+                    //forwardChannel.socket().soTimeout = 1000
 
-                    val receiveBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+                    val receiveBuffer = ByteBuffer.allocateDirect(MAX_PACKET_SIZE)
 
                     while (isServerThreadRunning) {
-                        receiveBuffer.clear()
+                        //receiveBuffer.clear()
                         val forwardSenderAddressTemp = forwardChannel.receive(receiveBuffer)
                         forwardSenderAddressTemp?.let {
+                            //forwardChannel.read(receiveBuffer)
+                            //receiveBuffer?.let {
                             receiveBuffer.flip()
+
+                            // Starte die Zeitmessung
+                            //val startTime = System.nanoTime()
+
+                            // Sende das Paket
                             channel.send(receiveBuffer, clinetSenderAddress)
+                            receiveBuffer.clear()
+
+                            // Stoppe die Zeitmessung und berechne die Dauer
+                            //val duration = System.nanoTime() - startTime
+
+                            // Gib die Dauer in Millisekunden aus
+                            //Log.d(TAG, "Server Paket gesendet in ${duration / 1_000_000} ms")
                         }
                         //sleep(1)
                     }
+                    channel.close()
                     forwardChannel.close()
+                    isServerThreadRunningInfo2 = false
                 } catch (e: IOException) {
+                    channel.close()
+                    forwardChannel.close()
                     e.printStackTrace()
                     Log.d(TAG, "Error occurred")
+                    isServerThreadRunningInfo2 = false
                 }
             }
             forwardThread.start()
-        }.start()
+        }
     }
 
+    /*
+    private fun startSocat(localPort: Int, remoteIp: String, remotePort: Int) {
+        // 1. Kopiere die Binärdatei ins interne Verzeichnis
+        /*val socatFile = File(filesDir, "socat")
+        if (!socatFile.exists()) {
+            applicationContext.assets.open("socat").use { input ->
+                FileOutputStream(socatFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            socatFile.setExecutable(true, false) // Datei ausführbar machen
+            socatFile.setReadable(true, false)   // Datei lesbar machen
+            socatFile.setWritable(true, false)   // Datei schreibbar machen (optional)
+            Log.d(TAG, "Socat erfolgreich kopiert nach: ${socatFile.absolutePath}")
+        }
+        val assetFiles = assets.list("") // Listet alle Dateien im assets-Ordner
+        Log.d("Assets", "Verfügbare Dateien: ${assetFiles?.joinToString()}")
+
+        val files = File(filesDir.absolutePath).listFiles()
+        if (files != null) {
+            for (file in files) {
+                Log.d("FilesDir", "Datei gefunden: ${file.name}")
+            }
+        } else {
+            Log.d("FilesDir", "Keine Dateien gefunden.")
+        }*/
+
+/*
+        // 2. Starte den socat-Prozess
+        val socatPath = applicationInfo.nativeLibraryDir + "/socat.so"
+        val command = arrayOf(
+            //socatFile.absolutePath,
+            socatPath,
+            "UDP-LISTEN:$localPort,fork",
+            "UDP:$remoteIp:$remotePort"
+        )
+
+        try {
+            Runtime.getRuntime().exec(command)
+            Log.d(TAG, "socat gestartet: ${command.joinToString(" ")}")
+        } catch (e: IOException) {
+            Log.e(TAG, "socat starten fehlgeschlagen", e)
+        }
+        */
+
+        val socatPath = applicationInfo.nativeLibraryDir + "/socat.so"
+        val command = arrayOf(
+            socatPath,
+            "UDP-LISTEN:$localPort,fork",
+            "UDP:$remoteIp:$remotePort"
+        )
+
+        try {
+            val process = ProcessBuilder(*command).start()
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            val errorReader = BufferedReader(InputStreamReader(process.errorStream))
+
+            Thread {
+                reader.forEachLine { Log.d(TAG, "SOCAT: $it") }
+            }.start()
+
+            Thread {
+                errorReader.forEachLine { Log.e(TAG, "SOCAT ERROR: $it") }
+            }.start()
+
+            Log.d(TAG, "socat gestartet: ${command.joinToString(" ")}")
+
+        } catch (e: IOException) {
+            Log.e(TAG, "socat starten fehlgeschlagen", e)
+        }
+
+    }
+     */
     private fun startnewUDPServer() {
         try {
             // Erstelle einen DatagramChannel zum Empfangen von UDP-Paketen auf dem Quellport
@@ -650,11 +902,12 @@ class MainActivity : AppCompatActivity() {
             val forwardChannel = DatagramChannel.open()
             forwardChannel.socket().receiveBufferSize = MAX_PACKET_SIZE
             forwardChannel.configureBlocking(false)
-            var clinetSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
+            var clinetSenderAddress =
+                InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
             //var forwardSenderAddress = InetSocketAddress(DESTINATION_IP, DESTINATION_PORT) as SocketAddress
             // Endlosschleife zum kontinuierlichen Empfangen von Paketen
-            val buffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
-            val receiveBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
+            val buffer = ByteBuffer.allocateDirect(MAX_PACKET_SIZE)
+            val receiveBuffer = ByteBuffer.allocateDirect(MAX_PACKET_SIZE)
 
             //forwardChannel.configureBlocking(true)
             //channel.configureBlocking(true)
@@ -686,7 +939,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun forwardPacket(buffer: ByteBuffer, senderAddress: InetSocketAddress, clinetSenderAddress :SocketAddress) {
+    /*
+    // Buffer-Pool zur Vermeidung von Allokationen
+    class BufferPool(poolSize: Int, factory: () -> ByteBuffer) {
+        private val pool = ArrayDeque<ByteBuffer>(poolSize).apply {
+            repeat(poolSize) { add(factory()) }
+        }
+
+        fun acquire(): ByteBuffer = synchronized(pool) {
+            pool.removeFirst()
+        }
+
+        fun release(buffer: ByteBuffer) = synchronized(pool) {
+            buffer.clear()
+            pool.addLast(buffer)
+        }
+    }
+
+    private fun forwardPacket(
+        buffer: ByteBuffer,
+        senderAddress: InetSocketAddress,
+        clinetSenderAddress: SocketAddress
+    ) {
         try {
             // Erstelle einen neuen DatagramChannel für den Weiterleitungsprozess
             Log.d(TAG, "empfangenen Daten $senderAddress.$clinetSenderAddress")
@@ -704,22 +978,25 @@ class MainActivity : AppCompatActivity() {
             forwardChannel.write(buffer)
             val receiveBuffer = ByteBuffer.allocate(MAX_PACKET_SIZE)
 
-          //  while (true) {
-                receiveBuffer.clear()
-                val senderAddress = forwardChannel.receive(receiveBuffer)
-                // Überprüfen, ob senderAddress nicht null ist und dann die Schleife verlassen
-                if (senderAddress != null) {
-                    Log.d(TAG, "empfangenen Daten $senderAddress. ${receiveBuffer} $clinetSenderAddress")
-                    receiveBuffer.flip()
-                    channel.send(receiveBuffer, clinetSenderAddress)
-                    //channel.close()
-                    //forwardChannel.connect(clinetSenderAddress)
-                    /*val forwardChanneltest = DatagramChannel.open()
-                    forwardChanneltest.send(receiveBuffer, clinetSenderAddress)
-                    forwardChanneltest.close()*/
-                    //break // Die Schleife verlassen, sobald senderAddress nicht null ist
-                }
-           // }
+            //  while (true) {
+            receiveBuffer.clear()
+            val senderAddress = forwardChannel.receive(receiveBuffer)
+            // Überprüfen, ob senderAddress nicht null ist und dann die Schleife verlassen
+            if (senderAddress != null) {
+                Log.d(
+                    TAG,
+                    "empfangenen Daten $senderAddress. ${receiveBuffer} $clinetSenderAddress"
+                )
+                receiveBuffer.flip()
+                channel.send(receiveBuffer, clinetSenderAddress)
+                //channel.close()
+                //forwardChannel.connect(clinetSenderAddress)
+                /*val forwardChanneltest = DatagramChannel.open()
+                forwardChanneltest.send(receiveBuffer, clinetSenderAddress)
+                forwardChanneltest.close()*/
+                //break // Die Schleife verlassen, sobald senderAddress nicht null ist
+            }
+            // }
 
             buffer.clear()
             // Schließe den Kanal nach dem Senden des Pakets
@@ -729,7 +1006,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun forwardPacketold(buffer: ByteBuffer, senderAddress: InetSocketAddress, clientSenderAddress: SocketAddress) {
+    private fun forwardPacketold(
+        buffer: ByteBuffer,
+        senderAddress: InetSocketAddress,
+        clientSenderAddress: SocketAddress
+    ) {
         try {
             // Überprüfen, ob die Größe des zu sendenden Datagramms die maximale Größe überschreitet
             if (buffer.remaining() > MAX_DATAGRAM_SIZE) {
@@ -760,7 +1041,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun sendChunk(chunkBuffer: ByteBuffer, senderAddress: InetSocketAddress, clientSenderAddress: SocketAddress) {
+    private fun sendChunk(
+        chunkBuffer: ByteBuffer,
+        senderAddress: InetSocketAddress,
+        clientSenderAddress: SocketAddress
+    ) {
         val forwardChannel = DatagramChannel.open()
         try {
             // Verbinde den Weiterleitungs-Kanal mit der Zieladresse und dem Zielport
@@ -772,15 +1057,17 @@ class MainActivity : AppCompatActivity() {
             val receiveBuffer = ByteBuffer.allocate(MAX_DATAGRAM_SIZE)
             val receivedAddress = forwardChannel.receive(receiveBuffer)
             receivedAddress?.let {
-                Log.d(TAG, "empfangenen Daten $senderAddress. ${receiveBuffer} $clientSenderAddress")
+                Log.d(
+                    TAG,
+                    "empfangenen Daten $senderAddress. ${receiveBuffer} $clientSenderAddress"
+                )
 
                 // Datagramm an den ursprünglichen Client senden
                 receiveBuffer.flip()
                 channel.send(receiveBuffer, clientSenderAddress)
             }
             //forwardChannel.close()
-        }
-        finally {
+        } finally {
             // Schließen des Weiterleitungs-Kanals
             forwardChannel.close()
         }
@@ -839,7 +1126,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    class UdpForwarderTask(private val from: InetSocketAddress, private val to: InetSocketAddress, private val ruleName: String) : AsyncTask<Void, Void, Void>() {
+        class UdpForwarderTask(private val from: InetSocketAddress, private val to: InetSocketAddress, private val ruleName: String) : AsyncTask<Void, Void, Void>() {
 
         private lateinit var udpForwarder: UdpForwarder
 
@@ -855,8 +1142,83 @@ class MainActivity : AppCompatActivity() {
             //udpForwarder.interrupt()
         }
     }
+    */
 
-    class UdpForwarder(private val from: InetSocketAddress, private val to: InetSocketAddress, private val ruleName: String) :
+    /*class UdpForwarderblödsinn(private val fromPort: Int, private val toIp: String, private val toPort: Int) {
+
+        private val BUFFER_SIZE = 65535 // Maximale UDP-Paketgröße
+        private val TIMEOUT_MS = 3000 // Timeout für inaktive Verbindungen
+
+        fun start() {
+            // Erstelle einen Selector, um mehrere Kanäle zu überwachen
+            val selector = Selector.open()
+            // Erstelle den Eingangskanal, der auf eingehende Pakete lauscht
+            val inChannel = DatagramChannel.open()
+
+            // Non-blocking Mode aktivieren
+            inChannel.configureBlocking(false)
+            inChannel.socket().bind(InetSocketAddress(fromPort))
+
+            // Kanal am Selector registrieren (nur für Leseoperationen)
+            inChannel.register(selector, SelectionKey.OP_READ)
+
+            println("UDP Forwarder gestartet auf Port $fromPort -> $toIp:$toPort")
+
+            // Buffer für das Empfangen und Weiterleiten von Daten
+            val buffer = ByteBuffer.allocate(BUFFER_SIZE)
+
+            while (true) {
+                // Warten auf eingehende Pakete
+                if (selector.select(TIMEOUT_MS.toLong()) == 0) {
+                    continue // Keine neuen Pakete -> weiter warten
+                }
+
+                val keyIterator = selector.selectedKeys().iterator()
+                while (keyIterator.hasNext()) {
+                    val key = keyIterator.next()
+                    keyIterator.remove()
+
+                    if (key.isReadable) {
+                        val clientChannel = key.channel() as DatagramChannel
+                        buffer.clear()
+
+                        // Empfange das Paket vom Client
+                        val clientAddress = clientChannel.receive(buffer)
+                        if (clientAddress != null) {
+                            buffer.flip()
+                            println("Empfangen von Client: $clientAddress (${buffer.limit()} Bytes)")
+
+                            // Erstelle einen Kanal für die Weiterleitung des Pakets an den Zielserver
+                            val forwardChannel = DatagramChannel.open()
+                            forwardChannel.send(buffer, InetSocketAddress(toIp, toPort))
+                            forwardChannel.close()
+
+                            println("Weitergeleitet an: $toIp:$toPort")
+
+                            // Jetzt auf die Antwort des Zielservers warten
+                            buffer.clear()
+                            val responseChannel = DatagramChannel.open()
+                            responseChannel.socket().bind(null) // Binde an zufälligen Port
+
+                            // Empfange Antwort vom Zielserver
+                            val serverResponse = responseChannel.receive(buffer)
+                            if (serverResponse != null) {
+                                buffer.flip()
+                                println("Antwort erhalten vom Zielserver.")
+
+                                // Antwort zurück an den ursprünglichen Client senden
+                                clientChannel.send(buffer, clientAddress)
+                                println("Antwort an Client gesendet: $clientAddress")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    class UdpForwarderoldold(private val from: InetSocketAddress, private val to: InetSocketAddress, private val ruleName: String) :
         Callable<Void> {
 
         private val TAG = "UdpForwarder"
@@ -999,6 +1361,369 @@ class MainActivity : AppCompatActivity() {
         private fun handleWrite(key: SelectionKey) {
             // Not used in this implementation
         }
-    }
+    }*/
 
+    /*class UdpForwarder {
+        private val selector: Selector = Selector.open()
+        private val clientToServerChannel: DatagramChannel = DatagramChannel.open()
+        private val serverToClientChannel: DatagramChannel = DatagramChannel.open()
+        private val bufferSize = 65507 // Max UDP-Paketgröße
+        private var isRunning = true
+
+        @Throws(IOException::class)
+        fun startForwarding(localPort: Int, remoteIp: String, remotePort: Int) {
+            configureChannels(localPort, remoteIp, remotePort)
+            runEventLoop()
+        }
+
+        private fun configureChannels(localPort: Int, remoteIp: String, remotePort: Int) {
+            // Client-to-Server Kanal (Empfängt Pakete vom Client)
+            clientToServerChannel.apply {
+                configureBlocking(false)
+                bind(InetSocketAddress(localPort))
+                register(selector, SelectionKey.OP_READ, "client_to_server")
+            }
+
+            // Server-to-Client Kanal (Sendet Pakete zum Server)
+            serverToClientChannel.apply {
+                configureBlocking(false)
+                connect(InetSocketAddress(remoteIp, remotePort))
+                register(selector, SelectionKey.OP_READ, "server_to_client")
+            }
+        }
+
+        private fun runEventLoop() {
+            while (isRunning) {
+                selector.select(1000) // Timeout: 1 Sekunde
+                val keys = selector.selectedKeys()
+                val iterator = keys.iterator()
+
+                while (iterator.hasNext()) {
+                    val key = iterator.next()
+                    iterator.remove()
+
+                    when {
+                        key.isReadable -> handleRead(key)
+                        key.isWritable -> handleWrite(key) //handleWirte fehlt
+                    }
+                }
+            }
+        }
+
+        private fun handleRead(key: SelectionKey) {
+            val buffer = ByteBuffer.allocateDirect(bufferSize)
+            val channel = key.channel() as DatagramChannel
+
+            when (key.attachment()) {
+                "client_to_server" -> {
+                    val senderAddress = channel.receive(buffer) as InetSocketAddress
+                    buffer.flip()
+                    forwardToServer(buffer, senderAddress)
+                }
+                "server_to_client" -> {
+                    channel.read(buffer)
+                    buffer.flip()
+                    forwardToClient(buffer, clientAddress) //hier fehlt doch die Adresse.
+                }
+            }
+        }
+
+        private fun forwardToServer(buffer: ByteBuffer, clientAddress: InetSocketAddress) {
+            serverToClientChannel.write(buffer)
+            Log.d(TAG, "Forwarded ${buffer.remaining()} bytes to server")
+        }
+
+        private fun forwardToClient(buffer: ByteBuffer, clientAddress) {
+            // Hier müsste die Client-Adresse aus einem Session-Store abgerufen werden
+            clientToServerChannel.send(buffer, clientAddress)
+            Log.d(TAG, "Forwarded ${buffer.remaining()} bytes to client")
+        }
+
+        fun stop() {
+            isRunning = false
+            selector.wakeup()
+            clientToServerChannel.close()
+            serverToClientChannel.close()
+        }
+    }*/
+
+    /*class UdpForwarder {
+        private val selector: Selector = Selector.open()
+        private val clientToServerChannel: DatagramChannel = DatagramChannel.open()
+        private val serverToClientChannel: DatagramChannel = DatagramChannel.open()
+        private val bufferSize = 65507
+        private var isRunning = true
+
+        // Session-Store für Client-Adressen
+        private val clientSessions = ConcurrentHashMap<InetSocketAddress, Long>()
+
+        @Throws(IOException::class)
+        fun startForwarding(localPort: Int, remoteIp: String, remotePort: Int) {
+            configureChannels(localPort, remoteIp, remotePort)
+            runEventLoop()
+        }
+
+        private fun configureChannels(localPort: Int, remoteIp: String, remotePort: Int) {
+            // Client-Kanal (Empfängt Pakete von Clients)
+            clientToServerChannel.apply {
+                configureBlocking(false)
+                bind(InetSocketAddress(localPort))
+                register(selector, SelectionKey.OP_READ, "client_to_server")
+            }
+
+            // Server-Kanal (Immer verbunden mit dem Zielserver)
+            serverToClientChannel.apply {
+                connect(InetSocketAddress(remoteIp, remotePort))
+                configureBlocking(false)
+                register(selector, SelectionKey.OP_READ, "server_to_client")
+            }
+        }
+
+        private fun runEventLoop() {
+            while (isRunning) {
+                selector.select(1000)
+                val keys = selector.selectedKeys()
+                val iterator = keys.iterator()
+
+                while (iterator.hasNext()) {
+                    val key = iterator.next()
+                    iterator.remove()
+
+                    if (key.isReadable) handleRead(key)
+                }
+            }
+        }
+
+        private fun handleRead(key: SelectionKey) {
+            val buffer = ByteBuffer.allocateDirect(bufferSize)
+            val channel = key.channel() as DatagramChannel
+
+            when (key.attachment()) {
+                "client_to_server" -> handleClientToServer(channel, buffer)
+                "server_to_client" -> handleServerToClient(channel, buffer)
+            }
+        }
+
+        private fun handleClientToServer(channel: DatagramChannel, buffer: ByteBuffer) {
+            val clientAddress = channel.receive(buffer) as InetSocketAddress
+            buffer.flip()
+
+            // Speichere Client-Adresse mit Zeitstempel
+            clientSessions[clientAddress] = System.currentTimeMillis()
+
+            forwardToServer(buffer)
+            Log.d(TAG, "Forwarded ${buffer.remaining()} bytes to server from $clientAddress")
+        }
+
+        private fun handleServerToClient(channel: DatagramChannel, buffer: ByteBuffer) {
+            channel.read(buffer)
+            buffer.flip()
+
+            // Finde die letzte aktive Client-Adresse
+            val clientAddress = clientSessions.maxByOrNull { it.value }?.key
+            clientAddress?.let {
+                forwardToClient(buffer, it)
+                Log.d(TAG, "Forwarded ${buffer.remaining()} bytes to client $it")
+            }
+        }
+
+        private fun forwardToServer(buffer: ByteBuffer) {
+            serverToClientChannel.write(buffer)
+        }
+
+        private fun forwardToClient(buffer: ByteBuffer, clientAddress: InetSocketAddress) {
+            clientToServerChannel.send(buffer, clientAddress)
+        }
+
+        fun stop() {
+            isRunning = false
+            selector.wakeup()
+            clientToServerChannel.close()
+            serverToClientChannel.close()
+        }
+    }*/
+
+    /*private fun startOptimizedUDPServer() {
+    try {
+        val selector = Selector.open()
+        val channel = DatagramChannel.open().apply {
+            bind(InetSocketAddress(SOURCE_PORT))
+            configureBlocking(false)
+            register(selector, SelectionKey.OP_READ)
+        }
+
+        val forwardChannel = DatagramChannel.open().apply {
+            connect(InetSocketAddress(DESTINATION_IP, DESTINATION_PORT))
+            configureBlocking(false)
+        }
+
+        channel.socket().receiveBufferSize = MAX_PACKET_SIZE
+        forwardChannel.socket().receiveBufferSize = MAX_PACKET_SIZE
+
+        val bufferPool = BufferPool(10) { ByteBuffer.allocateDirect(MAX_PACKET_SIZE) }
+        val clientSessions = ConcurrentHashMap<InetSocketAddress, Long>()
+
+        while (true) {
+            selector.select(500) // Timeout: 500ms
+            val keys = selector.selectedKeys().iterator()
+
+            while (keys.hasNext()) {
+                val key = keys.next()
+                keys.remove()
+
+                if (key.isReadable) {
+                    val buffer = bufferPool.acquire()
+                    val senderAddress = channel.receive(buffer) as InetSocketAddress
+                    buffer.flip()
+
+                    // Update client session
+                    clientSessions[senderAddress] = System.currentTimeMillis()
+
+                    // Forward to server
+                    forwardChannel.write(buffer)
+                    bufferPool.release(buffer)
+                }
+            }
+
+            // Check for server responses
+            val responseBuffer = bufferPool.acquire()
+            while (forwardChannel.read(responseBuffer) > 0) {
+                responseBuffer.flip()
+                // Send to last active client (Beispiel)
+                clientSessions.maxByOrNull { it.value }?.key?.let {
+                    channel.send(responseBuffer, it)
+                }
+                responseBuffer.clear()
+            }
+            bufferPool.release(responseBuffer)
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "Server crashed: ${e.message}")
+    }
+}
+
+    class UdpForwarder(
+        private val context: Context,
+        private val localPort: Int,
+        private val remoteIp: String,
+        private val remotePort: Int
+    ) : CoroutineScope {
+
+        private val job = Job()
+        override val coroutineContext: CoroutineContext = Dispatchers.IO + job
+
+        private val selector: Selector = Selector.open()
+        private val clientChannel: DatagramChannel = DatagramChannel.open().apply {
+            configureBlocking(false)
+            bind(InetSocketAddress(localPort))
+            register(selector, SelectionKey.OP_READ)
+        }
+
+        private val serverChannel: DatagramChannel = DatagramChannel.open().apply {
+            configureBlocking(false)
+            connect(InetSocketAddress(remoteIp, remotePort))
+        }
+
+        // Session-Store: Client-Adresse -> Letzte Aktivität
+        private val clientSessions = ConcurrentHashMap<InetSocketAddress, Long>()
+
+        // Buffer-Pool zur Vermeidung von Allokationen
+        private val bufferPool = BufferPool(10) { ByteBuffer.allocateDirect(65507) }
+
+        fun start() {
+            launch {
+                while (isActive) {
+                    try {
+                        selector.select(500) // Timeout: 500ms
+                        val keys = selector.selectedKeys().iterator()
+
+                        while (keys.hasNext()) {
+                            val key = keys.next()
+                            keys.remove()
+
+                            if (key.isReadable) {
+                                handleClientPacket()
+                            }
+                        }
+
+                        handleServerResponses()
+                        cleanupSessions()
+
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Fehler im Selector-Loop", e)
+                    }
+                }
+            }
+        }
+
+        private fun handleClientPacket() {
+            val buffer = bufferPool.acquire()
+            val clientAddress = clientChannel.receive(buffer) as? InetSocketAddress
+
+            clientAddress?.let {
+                buffer.flip()
+                clientSessions[it] = System.currentTimeMillis()
+                forwardToServer(buffer)
+                bufferPool.release(buffer)
+            }
+        }
+
+        private fun handleServerResponses() {
+            val buffer = bufferPool.acquire()
+            while (serverChannel.read(buffer) > 0) {
+                buffer.flip()
+                clientSessions.maxByOrNull { it.value }?.key?.let { clientAddress ->
+                    forwardToClient(buffer, clientAddress)
+                }
+                buffer.clear()
+            }
+            bufferPool.release(buffer)
+        }
+
+        private fun forwardToServer(buffer: ByteBuffer) {
+            serverChannel.write(buffer)
+        }
+
+        private fun forwardToClient(buffer: ByteBuffer, clientAddress: InetSocketAddress) {
+            clientChannel.send(buffer, clientAddress)
+        }
+
+        private fun cleanupSessions() {
+            val now = System.currentTimeMillis()
+            clientSessions.entries.removeIf { (_, lastActive) ->
+                now - lastActive > 300_000 // 5 Minuten Inaktivität
+            }
+        }
+
+        fun stop() {
+            job.cancel()
+            clientChannel.close()
+            serverChannel.close()
+            selector.close()
+        }
+
+        // Buffer-Pool für effiziente Speichernutzung
+        private class BufferPool(
+            private val capacity: Int,
+            private val factory: () -> ByteBuffer
+        ) {
+            private val pool = ArrayDeque<ByteBuffer>(capacity).apply {
+                repeat(capacity) { add(factory()) }
+            }
+
+            fun acquire(): ByteBuffer = synchronized(pool) {
+                pool.removeFirst()
+            }
+
+            fun release(buffer: ByteBuffer) = synchronized(pool) {
+                buffer.clear()
+                pool.addLast(buffer)
+            }
+        }
+
+        companion object {
+            private const val TAG = "UdpForwarder"
+        }
+    }
+     */
 }
