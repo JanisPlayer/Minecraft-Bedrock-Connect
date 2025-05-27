@@ -8,6 +8,20 @@ Although my project is **non-commercial**, **purely private**, and **open source
 
 As a result, the app has been renamed **"MC Bedrock Proxy"** on the **Google Play Store**.
 
+Why is this thing called “MineProxyLink” now?
+
+After some thought, I decided to go with a **made-up, purely fantasy name**: **MineProxyLink**.
+
+I’m hoping this helps speed things up on Google’s side, and avoids the *next* issue. Even though names like “MC” or “Bedrock” are made of basic words, ChatGPT (my AI lawyer 😄) told me: yeah, they might be okay, but **better safe than sorry**, without legal protection, someone might claim it’s a new “infringing” version.
+
+I also considered names like **BlockGate**, **BedrockGate**, or **BedrockProxy**, but I found apps and projects with those names already, and to be honest, they looked so polished I wouldn’t be surprised if one of them registers a trademark next.
+
+So yeah, **sorry for the ultra-generic name**, but hey, only Play Store users have to deal with it. 😅
+
+Maybe I’ll rename this README to
+👉 `this-is-why-the-name-sounds-dumb.md`
+– others might call it *creative*. 😂
+
 ---
 
 ### Background
@@ -46,9 +60,23 @@ Thank you to everyone who supported this project.
 
 Ich wurde im Mai 2025 von der Firma **GKM Interactive UG** per E-Mail kontaktiert und zur Änderung des Namens meiner App **„MC Bedrock Connect“** aufgefordert, da dieser nach ihrer Auffassung eine Verletzung der eingetragenen Wortmarke **„BedrockConnect“** darstellt.
 
-Obwohl mein Projekt **nicht kommerziell**, **rein privat** und **Open Source** ist, habe ich der Aufforderung zugestimmt – nicht, weil ich den Vorwurf nachvollziehen kann, sondern weil ich als Einzelperson keine rechtliche Möglichkeit habe, mich wirksam zu verteidigen.
+Obwohl mein Projekt **nicht kommerziell**, **rein privat** und **Open Source** ist, habe ich der Aufforderung zugestimmt, nicht, weil ich den Vorwurf nachvollziehen kann, sondern weil ich als Einzelperson keine rechtliche Möglichkeit habe, mich wirksam zu verteidigen.
 
 Die App wurde im **Google Play Store** daher auf **„MC Bedrock Proxy“** umbenannt.
+
+Warum heißt das Ding jetzt „MineProxyLink“?
+
+Nach reiflicher Überlegung habe ich mich **doch für einen fantasievollen Namen** entschieden: **MineProxyLink**.
+
+Ich hoffe, Google nimmt ihn dadurch schneller an, und ich muss mich nicht gleich mit dem nächsten Problem auseinandersetzen. Auch wenn das bisherige nur Grundbegriffe wie „MC“ oder „Bedrock“ waren, meint ChatGPT (mein KI-Anwalt), dass das zwar **vielleicht noch durchgeht**, aber **ohne Rechtsschutz besser nicht**, sonst legt man mir das vielleicht als neue „verletzende“ Version aus.
+
+Ich hatte auch überlegt, **BlockGate**, **BedrockGate** oder **BedrockProxy** zu nehmen, hab aber dann Projekte und Marken gefunden, die so ähnlich heißen, und ehrlich gesagt, waren die so gut gemacht, dass ich dachte: Wenn die das als Marke eintragen lassen, dann bekomme ich bald die nächste Mail.
+
+Also **sorry für den total unspezifischen Namen**, aber hey, den müssen nur ein paar Leute im Play Store aushalten. 😄
+
+Vielleicht benenne ich die README in
+👉 `deshalb klingt der Name so blöd.md`um
+– andere könnten es „kreativ“ nennen. 😂
 
 ---
 
