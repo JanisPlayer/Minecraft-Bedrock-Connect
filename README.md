@@ -8,6 +8,8 @@ https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/tree/master
 [Minecraft-Bedrock-Connect.apk](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/raw/main/Minecraft-Bedrock-Connect.apk)  
 PlayStore: [Download](https://play.google.com/store/apps/details?id=de.heldendesbildschirms.mcbedrockconnector) [PlayStore Availability](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/blob/main/PlayStore%20Availability.md)  
 
+This project is in no way connected to GKM Interactive or Mojang/Microsoft. It is a purely private, non-commercial open-source project.
+
 # Minecraft-Bedrock-Connect  
 An Android app that enables forwarding a server to LAN using packet forwarding.  
 This can be useful for consoles like Xbox, PlayStation to connect to external servers.  
@@ -59,6 +61,8 @@ https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/tree/master
 # Last Build:
 [Minecraft-Bedrock-Connect.apk](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/raw/main/Minecraft-Bedrock-Connect.apk)  
 PlayStore: [Download](https://play.google.com/store/apps/details?id=de.heldendesbildschirms.mcbedrockconnector) [PlayStore Verfügbarkeit](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/blob/main/PlayStore%20Availability.md)  
+
+Dieses Projekt steht in keiner Verbindung zu GKM Interactive oder Mojang/Microsoft. Es handelt sich um ein rein privates, nicht-kommerzielles Open-Source-Projekt.
 
 # Minecraft-Bedrock-Connect
 Eine Android App die es ermöglicht einen Server ins LAN weiterzuleiten mit Paket weiterleitung.
