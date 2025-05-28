@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">MC Bedrock Connector</string>
+    <string name="app_name">MineProxyLink</string>
     <string name="action_settings">Einstellungen</string>
     <!-- Strings used for fragments for navigation -->
     <string name="first_fragment_label">Erstes Fragment</string>
@@ -15,23 +15,6 @@
     <string name="port">Port</string>
     <string name="confirm">Bestätigen</string>
     <string name="restart">Neustart</string>
-    <string name="tutorial">
-Die App stellt standardmäßig eine Verbindung zu einem BedrockConnect-Server her.\n
-Diese Server gehören nicht zu unserem Projekt, sondern werden von einer anderen Community betrieben.\n\n
-Ihr könnt den Server unter \"LAN\" in Minecraft finden und euch dort verbinden.\n
-Sobald die Verbindung besteht, könnt ihr im Spiel die Adresse des gewünschten Servers eingeben.\n\n
-Ihr werdet dann automatisch auf den richtigen Server weitergeleitet, sodass die Verbindung auch ohne die App funktioniert.\n
-Danach könnt ihr einfach auf den \"Beenden\"-Knopf drücken.\n\n
-Hinweis: Falls ihr zu einem anderen Server wechseln möchtet, kann es nötig sein, Minecraft neu zu starten.\n
-Achtung: Die direkte Verbindung über die App hat derzeit noch Leistungsprobleme. Daher empfehlen wir, zunächst den oben beschriebenen Weg zu nutzen.\n\n
-Nächste Möglichkeit: Direkt verbinden:
-Trage deine IP und den Port ein und drücke auf „Bestätigen“, um den Server zu ändern.\n
-Danach kannst du den Server in die Liste abspeichern, indem du auf das Plus-Symbol klickst.\n
-Langes Drücken auf einen Eintrag löscht ihn aus der Liste.\n\n
-Der Server sollte unter \"LAN\" angezeigt werden.\n
-Das Gerät muss sich im gleichen Netzwerk befinden.\n\n
-Da sich diese Version noch in einem frühen Entwicklungsstadium befindet, kann es zu Fehlern kommen.\n
-Bei Verbindungsproblemen kann es helfen, die App neu zu starten oder nur die Sockets mit der „Neustart“-Schaltfläche neu zu starten.\n\n
-Damit die App im Hintergrund funktioniert, müssen möglicherweise die Energiesparoptionen der App in den Android-Einstellungen angepasst werden.</string>
+    <string name="tutorial">\nDie App stellt standardmäßig eine Verbindung zu einem BedrockConnect-Server her.\n\nDiese Server gehören nicht zu unserem Projekt, sondern werden von einer anderen Community (https://github.com/Pugmatt/BedrockConnect) betrieben und sie haben nichts mit der App zu tun, außer dass sie die Erlaubnis zur Nutzung der Server erteilen.\n\n\nIhr könnt den Server unter \"LAN\" in Minecraft finden und euch dort verbinden.\n\nSobald die Verbindung besteht, könnt ihr im Spiel die Adresse des gewünschten Servers eingeben.\n\n\nIhr werdet dann automatisch auf den richtigen Server weitergeleitet, sodass die Verbindung auch ohne die App funktioniert.\n\nDanach könnt ihr einfach auf den \"Beenden\"-Knopf drücken.\n\n\nHinweis: Falls ihr zu einem anderen Server wechseln möchtet, kann es nötig sein, Minecraft neu zu starten.\n\nAchtung: Die direkte Verbindung über die App hat derzeit noch Leistungsprobleme. Daher empfehlen wir, zunächst den oben beschriebenen Weg zu nutzen.\n\n\nNächste Möglichkeit: Direkt verbinden:\nTrage deine IP und den Port ein und drücke auf „Bestätigen“, um den Server zu ändern.\n\nDanach kannst du den Server in die Liste abspeichern, indem du auf das Plus-Symbol klickst.\n\nLanges Drücken auf einen Eintrag löscht ihn aus der Liste.\n\n\nDer Server sollte unter \"LAN\" angezeigt werden.\n\nDas Gerät muss sich im gleichen Netzwerk befinden.\n\n\nDa sich diese Version noch in einem frühen Entwicklungsstadium befindet, kann es zu Fehlern kommen.\n\nBei Verbindungsproblemen kann es helfen, die App neu zu starten oder nur die Sockets mit der „Neustart“-Schaltfläche neu zu starten.\n\n\nDamit die App im Hintergrund funktioniert, müssen möglicherweise die Energiesparoptionen der App in den Android-Einstellungen angepasst werden.</string>
     <string name="start_stop">Start</string>
 </resources>

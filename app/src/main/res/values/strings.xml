@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">MC Bedrock Connector</string>
+    <string name="app_name">MineProxyLink</string>
     <string name="action_settings">Settings</string>
     <!-- Strings used for fragments for navigation -->
     <string name="first_fragment_label">First Fragment</string>
@@ -15,24 +15,6 @@
     <string name="port">Port</string>
     <string name="confirm">Confirm</string>
     <string name="restart">Restart</string>
-    <string name="tutorial">
-The app connects to a BedrockConnect server by default.\n
-These servers are not part of our project but are operated by another community.\n\n
-You can find the server under "LAN" in Minecraft and connect to it there.\n
-Once connected, you can enter the address of the desired server in the game.\n\n
-You will then be automatically redirected to the correct server, so the connection will work without the app.\n
-After that, you can simply press the "Exit" button.\n\n
-Note: If you want to switch to a different server, it may be necessary to restart Minecraft.\n
-Warning: Direct connection via the app currently has performance issues. Therefore, we recommend using the method described above first.\n\n
-Next option: Direct connection:\n
-Enter your IP and port, then press "Confirm" to change the server.\n
-After that, you can save the server to the list by clicking on the plus symbol.\n
-Long press on an entry deletes it from the list.\n\n
-The server should appear under "LAN".\n
-The device must be on the same network.\n\n
-Since this version is still in an early development stage, errors may occur.\n
-In case of connection problems, restarting the app or just the sockets with the "Restart" button may help.\n\n
-To enable the app to work in the background, you may need to adjust the apps power-saving options in the Android settings
-    </string>
+    <string name="tutorial">"\nThe app connects to a BedrockConnect server by default.\n\nThese servers are not part of our project but are operated by another community (https://github.com/Pugmatt/BedrockConnect) and they have nothing to do with the app, except for granting permission to use the servers..\n\n\nYou can find the server under LAN in Minecraft and connect to it there.\n\nOnce connected, you can enter the address of the desired server in the game.\n\n\nYou will then be automatically redirected to the correct server, so the connection will work without the app.\n\nAfter that, you can simply press the Exit button.\n\n\nNote: If you want to switch to a different server, it may be necessary to restart Minecraft.\n\nWarning: Direct connection via the app currently has performance issues. Therefore, we recommend using the method described above first.\n\n\nNext option: Direct connection:\n\nEnter your IP and port, then press Confirm to change the server.\n\nAfter that, you can save the server to the list by clicking on the plus symbol.\n\nLong press on an entry deletes it from the list.\n\n\nThe server should appear under LAN.\n\nThe device must be on the same network.\n\n\nSince this version is still in an early development stage, errors may occur.\n\nIn case of connection problems, restarting the app or just the sockets with the Restart button may help.\n\n\nTo enable the app to work in the background, you may need to adjust the apps power-saving options in the Android settings\n    "</string>
     <string name="start_stop">Start</string>
 </resources>
