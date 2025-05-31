@@ -5,7 +5,7 @@
 https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/tree/master  
 
 # Last Build:  
-[Minecraft-Bedrock-Connect.apk](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/raw/main/Minecraft-Bedrock-Connect.apk)  
+[app-release.apk](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/raw/main/app-release.apk)  
 PlayStore: [Download](https://play.google.com/store/apps/details?id=de.heldendesbildschirms.mcbedrockconnector) [Why The App Was Renamed](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/blob/main/Why_The_App_Was_Renamed.md) [PlayStore Availability](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/blob/main/PlayStore%20Availability.md)  
 
 This project is in no way connected to GKM Interactive or Mojang/Microsoft. It is a purely private, non-commercial open-source project.
@@ -59,7 +59,7 @@ The server then redirects the received packets to the target server and relays t
 https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/tree/master
 
 # Last Build:
-[Minecraft-Bedrock-Connect.apk](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/raw/main/Minecraft-Bedrock-Connect.apk)  
+[app-release.apk](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/raw/main/app-release.apk)  
 PlayStore: [Download](https://play.google.com/store/apps/details?id=de.heldendesbildschirms.mcbedrockconnector) [Warum die App umbenannt wurde](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/blob/main/Why_The_App_Was_Renamed.md) [PlayStore Verfügbarkeit](https://github.com/JanisPlayer/Minecraft-Bedrock-Connect/blob/main/PlayStore%20Availability.md)  
 
 Dieses Projekt steht in keiner Verbindung zu GKM Interactive oder Mojang/Microsoft. Es handelt sich um ein rein privates, nicht-kommerzielles Open-Source-Projekt.
