@@ -9,13 +9,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.Uri
+//import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 import android.util.Log
 import android.view.WindowManager
 import android.widget.*
@@ -32,6 +31,8 @@ import java.nio.ByteBuffer
 import java.nio.channels.DatagramChannel
 import java.util.concurrent.Executors
 import kotlin.system.exitProcess
+import androidx.core.content.edit
+import androidx.core.net.toUri
 
 object ServerState { // If another solution is to be found, it won't work this way either.
     var isServerThreadRunning = false
@@ -41,7 +42,7 @@ object ServerState { // If another solution is to be found, it won't work this w
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var channel: DatagramChannel
+    //private lateinit var channel: DatagramChannel
 
     private companion object {
         private const val TAG = "MainActivity"
@@ -50,7 +51,7 @@ class MainActivity : AppCompatActivity() {
         private var DESTINATION_PORT = 19132
         private const val REQUEST_INTERNET_PERMISSION = 123
         private const val MAX_PACKET_SIZE = 65507
-        private const val MAX_DATAGRAM_SIZE = 65507
+        //private const val MAX_DATAGRAM_SIZE = 65507
         private const val PREF_NAME = "MyPrefs"
         private const val PREF_DESTINATION_IP = "destination_ip"
         private const val PREF_DESTINATION_PORT = "destination_port"
@@ -60,10 +61,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var sharedPreferences: SharedPreferences
-    private lateinit var myWakeLock: MyWakeLock
+    //private lateinit var myWakeLock: MyWakeLock
     private val CHANNEL_ID = "MC_Bedroock_Connect_Channel"
     var mNotificationManager: NotificationManager? = null
 
+    @SuppressLint("BatteryLife", "SetTextI18n")
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,10 +76,10 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent()
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-            intent.action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;
-            intent.data = Uri.parse("package:" + packageName);
-            this.startActivity(intent);
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            intent.action = ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+            intent.data = ("package:$packageName").toUri()
+            this.startActivity(intent)
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             Toast.makeText(this, "Not allowed isIgnoringBatteryOptimizations", Toast.LENGTH_SHORT)
                 .show()
 
@@ -148,9 +150,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<EditText>(R.id.editTextPort).setText(destinationPort.toString())
         findViewById<Button>(R.id.buttonConfirm).setOnClickListener {
             val hostname =
-                if (findViewById<EditText>(R.id.editTextHostname).text.toString().isNotEmpty()) {
-                    findViewById<EditText>(R.id.editTextHostname).text.toString()
-                } else {
+                findViewById<EditText>(R.id.editTextHostname).text.toString().ifEmpty {
                     DESTINATION_IP
                 }
             val port = if (findViewById<EditText>(R.id.editTextPort).text.toString().isNotEmpty()) {
@@ -235,7 +235,7 @@ class MainActivity : AppCompatActivity() {
         // Convert the Set of strings back to an ArrayList
         val destinationIPListA = arrayListOf<String>()
         destinationIPListA.addAll(mySet!!)
-        var destinationIPList = destinationIPListA.toMutableList()
+        val destinationIPList = destinationIPListA.toMutableList()
         val itemsIpAndPort = destinationIPList
         //val destinationIPList = destinationIPSave?.toMutableList()?: mutableListOf()
         //val destinationIPList = destinationIPSet?.toMutableList()
@@ -269,23 +269,23 @@ class MainActivity : AppCompatActivity() {
         listView.adapter = serverListAdapter
 
         listView.setOnItemClickListener { parent, view, i, id ->
-            findViewById<EditText>(R.id.editTextHostname).setText(itemsServerIp.get(i))
-            findViewById<EditText>(R.id.editTextPort).setText(itemsServerPort.get(i).toString())
-            Toast.makeText(this, "Clicked item : ${itemsServerIp.get(i)}", Toast.LENGTH_SHORT)
+            findViewById<EditText>(R.id.editTextHostname).setText(itemsServerIp[i])
+            findViewById<EditText>(R.id.editTextPort).setText(itemsServerPort[i].toString())
+            Toast.makeText(this, "Clicked item : ${itemsServerIp[i]}", Toast.LENGTH_SHORT)
                 .show()
 
         }
 
         listView.setOnItemLongClickListener { parent, view, i, id ->
-            var hostname = "${itemsServerIp[i]}:${itemsServerPort[i].toString()}"
-            Toast.makeText(this, "Remove: ${itemsServerIp.get(i)}", Toast.LENGTH_SHORT).show()
+            val hostname = "${itemsServerIp[i]}:${itemsServerPort[i]}"
+            Toast.makeText(this, "Remove: ${itemsServerIp[i]}", Toast.LENGTH_SHORT).show()
             itemsServerIp.removeAt(i)
             itemsServerPort.removeAt(i)
             serverListAdapter.notifyDataSetChanged()
 
-            val editor = sharedPreferences.edit()
-            itemsIpAndPort.remove(hostname)
-            /*if (destinationIPList.isNotEmpty()) {
+            sharedPreferences.edit {
+                itemsIpAndPort.remove(hostname)
+                /*if (destinationIPList.isNotEmpty()) {
                 for (ia in itemsIpAndPort.indices) {
                     if (itemsIpAndPort[ia] == hostname) {
                         itemsIpAndPort.removeAt(hostname)
@@ -293,29 +293,29 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }*/
-            editor.putStringSet("PREF_DESTINATION_IPS", itemsIpAndPort.toSet())
-            editor.apply()
+                putStringSet("PREF_DESTINATION_IPS", itemsIpAndPort.toSet())
+            }
             false
         }
 
         findViewById<FloatingActionButton>(R.id.addServer).setOnClickListener {
-            itemsServerIp.add("$DESTINATION_IP")
+            itemsServerIp.add(DESTINATION_IP)
             itemsServerPort.add(DESTINATION_PORT)
             listView.adapter = serverListAdapter
 
-            val editor = sharedPreferences.edit()
-            for (i in itemsServerIp.indices) {
-                val combined = "${itemsServerIp[i]}:${itemsServerPort[i].toString()}"
-                itemsIpAndPort.add(combined)
+            sharedPreferences.edit {
+                for (i in itemsServerIp.indices) {
+                    val combined = "${itemsServerIp[i]}:${itemsServerPort[i]}"
+                    itemsIpAndPort.add(combined)
+                }
+                putStringSet("PREF_DESTINATION_IPS", itemsIpAndPort.toSet())
+                //editor.putStringSet("PREF_DESTINATION_IPS", myArrayList.toTypedArray().toList().toSet()) //Ob Array oder List oder sonst was, toSet geht nicht nur String. toSet sortiert auch wohl doppelte Einträge raus, weil Hash, deshalb geht es nicht.
+                putStringSet(
+                    "PREF_DESTINATION_PORTS", itemsServerPort.map { it.toString() }.toSet()
+                )
+                //val destinationPortSettest = sharedPreferences.getString("PREF_DESTINATION_IPSTest", "")
+                //Toast.makeText(this, "Long clicked item : ${itemsIpAndPort.toSet()}", Toast.LENGTH_SHORT).show()
             }
-            editor.putStringSet("PREF_DESTINATION_IPS", itemsIpAndPort.toSet())
-            //editor.putStringSet("PREF_DESTINATION_IPS", myArrayList.toTypedArray().toList().toSet()) //Ob Array oder List oder sonst was, toSet geht nicht nur String. toSet sortiert auch wohl doppelte Einträge raus, weil Hash, deshalb geht es nicht.
-            editor.putStringSet(
-                "PREF_DESTINATION_PORTS", itemsServerPort.map { it.toString() }.toSet()
-            )
-            //val destinationPortSettest = sharedPreferences.getString("PREF_DESTINATION_IPSTest", "")
-            //Toast.makeText(this, "Long clicked item : ${itemsIpAndPort.toSet()}", Toast.LENGTH_SHORT).show()
-            editor.apply()
         }
 
         /*val fromPort = 19132
@@ -365,21 +365,21 @@ class MainActivity : AppCompatActivity() {
 
         if (isFirstStart) {
             // Füge Elemente zur Liste hinzu
-            itemsServerIp.add("$DESTINATION_IP")
+            itemsServerIp.add(DESTINATION_IP)
             itemsServerPort.add(DESTINATION_PORT)
             listView.adapter = serverListAdapter
 
-            val editor = sharedPreferences.edit()
-            for (i in itemsServerIp.indices) {
-                val combined = "${itemsServerIp[i]}:${itemsServerPort[i].toString()}"
-                itemsIpAndPort.add(combined)
+            sharedPreferences.edit {
+                for (i in itemsServerIp.indices) {
+                    val combined = "${itemsServerIp[i]}:${itemsServerPort[i]}"
+                    itemsIpAndPort.add(combined)
+                }
+                putStringSet("PREF_DESTINATION_IPS", itemsIpAndPort.toSet())
+                putStringSet(
+                    "PREF_DESTINATION_PORTS", itemsServerPort.map { it.toString() }.toSet()
+                )
+                putBoolean("is_first_start", false)
             }
-            editor.putStringSet("PREF_DESTINATION_IPS", itemsIpAndPort.toSet())
-            editor.putStringSet(
-                "PREF_DESTINATION_PORTS", itemsServerPort.map { it.toString() }.toSet()
-            )
-            editor.putBoolean("is_first_start", false)
-            editor.apply()
         }
     }
 
@@ -424,10 +424,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveDestinationSettings(ip: String, port: Int) {
         // Save destination IP and port to SharedPreferences
-        val editor = sharedPreferences.edit()
-        editor.putString(PREF_DESTINATION_IP, ip)
-        editor.putInt(PREF_DESTINATION_PORT, port)
-        editor.apply()
+        sharedPreferences.edit {
+            putString(PREF_DESTINATION_IP, ip)
+            putInt(PREF_DESTINATION_PORT, port)
+        }
     }
 
     class MyWakeLock(private val context: Context) {
@@ -435,9 +435,9 @@ class MainActivity : AppCompatActivity() {
 
         @SuppressLint("InvalidWakeLockTag")
         fun acquireWakeLock() {
-            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val powerManager = context.getSystemService(POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MyWakeLockTag")
-            wakeLock?.acquire()
+            wakeLock?.acquire(10*60*1000L /*10 minutes*/)
         }
 
         fun releaseWakeLock() {
@@ -478,8 +478,8 @@ class MainActivity : AppCompatActivity() {
     )
 
     private fun startUDPServerThread() {
-        var maxPaketSize = 65000
-        var timeout = 300
+        val maxPaketSize = 65000
+        val timeout = 300
         while (true) {
             try {
                 serverSocketThread.soTimeout = timeout
@@ -500,8 +500,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startUDPClientThread() {
-        var maxPaketSize = 65000
-        var timeout = 300
+        val maxPaketSize = 65000
+        val timeout = 300
         while (true) {
             Log.d(
                 TAG, "Senden die empfangenen${packetServerThread.address}"
@@ -531,8 +531,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startUDPServerThreadVorlage() {
-        var maxPaketSize = 65000
-        var timeout = 300
+        val maxPaketSize = 65000
+        val timeout = 300
         val serverSocket = DatagramSocket(SOURCE_PORT, InetAddress.getByName("0.0.0.0"))
         serverSocket.soTimeout = timeout
         val packet = DatagramPacket(ByteArray(maxPaketSize), maxPaketSize)
@@ -541,8 +541,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startUDPClientThreadVorlage(packet: DatagramPacket): DatagramPacket {
-        var maxPaketSize = 65507
-        var timeout = 300
+        val maxPaketSize = 65507
+        val timeout = 300
         val clientSocket = DatagramSocket()
         clientSocket.soTimeout = timeout
         val sendPacket = DatagramPacket(
@@ -564,8 +564,8 @@ class MainActivity : AppCompatActivity() {
             val serverSocket = DatagramSocket(SOURCE_PORT, InetAddress.getByName("0.0.0.0"))
             val clientSocket = DatagramSocket()
             // Endlosschleife zum kontinuierlichen Empfangen von Paketen
-            var maxPaketSize = 65000
-            var timeout = 100
+            val maxPaketSize = 65000
+            val timeout = 100
             //clientSocket.connect(InetAddress.getByName(DESTINATION_IP), DESTINATION_PORT)
 
             var debugVar = 0
@@ -926,7 +926,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 receiveBuffer.clear()
-                var forwardSenderAddressTemp = forwardChannel.receive(receiveBuffer)
+                val forwardSenderAddressTemp = forwardChannel.receive(receiveBuffer)
                 forwardSenderAddressTemp.let {
                     //Log.d(TAG, "empfangenen Daten $forwardSenderAddress. ${receiveBuffer} $clinetSenderAddress")
                     receiveBuffer.flip()
