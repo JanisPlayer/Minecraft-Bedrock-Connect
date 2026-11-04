@@ -141,6 +141,7 @@ class MainActivity : AppCompatActivity() {
         val experimentalLanEnabled = sharedPreferences.getBoolean(PREF_EXPERIMENTAL_LAN_BRIDGE, false)
         DESTINATION_IP = destinationIP
         DESTINATION_PORT = destinationPort
+        BedrockProxyManager.init(applicationContext)
         BedrockProxyManager.setExperimentalLanBridge(experimentalLanEnabled)
 
         val editHostname = findViewById<EditText>(R.id.editTextHostname)
@@ -268,7 +269,7 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        findViewById<FloatingActionButton>(R.id.addServer).setOnClickListener {
+        findViewById<android.view.View>(R.id.addServer).setOnClickListener {
             val currentHost = editHostname.text.toString().trim().ifEmpty { DESTINATION_IP }
             val currentPort = editPort.text.toString().trim().toIntOrNull() ?: DESTINATION_PORT
             val combinedEntry = "$currentHost:$currentPort"
@@ -287,6 +288,25 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
             }
+        }
+
+        val layoutInstructionsHeader = findViewById<android.view.View>(R.id.layoutInstructionsHeader)
+        val textExpandCollapse = findViewById<android.widget.TextView>(R.id.textExpandCollapse)
+        val textViewGuide = findViewById<android.widget.TextView>(R.id.textView)
+        val buttonOpenSheet = findViewById<android.view.View>(R.id.buttonOpenSheet)
+
+        layoutInstructionsHeader?.setOnClickListener {
+            if (textViewGuide.visibility == android.view.View.VISIBLE) {
+                textViewGuide.visibility = android.view.View.GONE
+                textExpandCollapse?.text = "▼"
+            } else {
+                textViewGuide.visibility = android.view.View.VISIBLE
+                textExpandCollapse?.text = "▲"
+            }
+        }
+
+        buttonOpenSheet?.setOnClickListener {
+            showHelpBottomSheet()
         }
 
         if (!BedrockProxyManager.isProxyRunning()) {
@@ -344,6 +364,17 @@ class MainActivity : AppCompatActivity() {
                 BedrockProxyManager.restart(DESTINATION_IP, DESTINATION_PORT, SOURCE_PORT)
             }
         }
+    }
+
+    private fun showHelpBottomSheet() {
+        val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        val sheetView = layoutInflater.inflate(R.layout.dialog_help_bottom_sheet, null)
+        sheetView.findViewById<android.widget.TextView>(R.id.sheetTextView)?.text = getString(R.string.tutorial)
+        sheetView.findViewById<android.view.View>(R.id.buttonCloseSheet)?.setOnClickListener {
+            dialog.dismiss()
+        }
+        dialog.setContentView(sheetView)
+        dialog.show()
     }
 
     private fun createChannel() {

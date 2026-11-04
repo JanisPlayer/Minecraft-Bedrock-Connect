@@ -1,5 +1,6 @@
 package de.heldendesbildschirms.mcbedrockconnector
 
+import android.content.Context
 import android.util.Log
 import java.io.IOException
 import java.io.InputStream
@@ -70,15 +71,25 @@ object BedrockProxyManager {
     private val activeTcpSockets = ConcurrentHashMap.newKeySet<Socket>()
 
     @Volatile
+    private var appContext: Context? = null
+
+    @Volatile
     var experimentalLanBridgeEnabled: Boolean = false
         private set
 
-    private val netherNetLanBridge = NetherNetLanBridge { packetBuffer, recipientAddress ->
-        try {
-            discoveryUdpChannel?.send(packetBuffer, recipientAddress)
-        } catch (e: IOException) {
-            Log.w(TAG, "Failed to send LAN discovery packet to $recipientAddress: ${e.message}")
-        }
+    private val netherNetLanBridge = NetherNetLanBridge(
+        contextProvider = { appContext },
+        sendDiscoveryUdp = { packetBuffer, recipientAddress ->
+            try {
+                discoveryUdpChannel?.send(packetBuffer, recipientAddress)
+            } catch (e: IOException) {
+                Log.w(TAG, "Failed to send LAN discovery packet to $recipientAddress: ${e.message}")
+            }
+        },
+    )
+
+    fun init(context: Context) {
+        appContext = context.applicationContext
     }
 
     fun isProxyRunning(): Boolean = isRunning.get()

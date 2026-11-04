@@ -1,6 +1,7 @@
 package de.heldendesbildschirms.mcbedrockconnector
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.util.Log
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -15,8 +16,6 @@ import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.crypto.Cipher
 import javax.crypto.Mac
@@ -24,10 +23,14 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.math.min
 
 /**
- * Bridges Minecraft: Bedrock Edition NetherNet LAN Discovery & Signaling (UDP 7551)
- * to a remote NetherNet server's HTTP Signaling endpoint (GET/POST /v1/join on TCP 19132).
+ * Bridges Minecraft: Bedrock Edition NetherNet LAN Discovery & Signaling (UDP 7551).
+ *
+ * For LAN clients without a Microsoft identity (consoles/local LAN join), it accepts the WebRTC connection
+ * locally on the smartphone via [LocalTransferSession] and issues an immediate Bedrock TransferPacket
+ * to transfer the client to the real remote server.
  */
 class NetherNetLanBridge(
+    private val contextProvider: () -> Context?,
     private val sendDiscoveryUdp: (ByteBuffer, InetSocketAddress) -> Unit,
 ) {
     companion object {
@@ -41,7 +44,6 @@ class NetherNetLanBridge(
         private const val MAX_DECLARED_MESSAGE_DATA = 1140
         private const val SERVER_DATA_VERSION: Byte = 7
         private const val LAN_CONNECTION_TYPE: Int = 4
-        private const val OFFER_CANDIDATE_WAIT_MS = 220L
 
         private const val SIGNAL_OFFER = "CONNECTREQUEST"
         private const val SIGNAL_ANSWER = "CONNECTRESPONSE"
@@ -85,17 +87,7 @@ class NetherNetLanBridge(
     private val isFetchingDefault = AtomicBoolean(false)
 
     private var scheduler: ScheduledExecutorService? = null
-
-    private class PendingOffer(
-        val clientSenderId: Long,
-        val connectionId: String,
-        @Volatile var clientAddress: InetSocketAddress,
-        @Volatile var sdpOffer: String,
-        val candidates: MutableList<String> = mutableListOf(),
-        var scheduledTask: ScheduledFuture<*>? = null,
-    )
-
-    private val pendingOffers = ConcurrentHashMap<String, PendingOffer>()
+    private val activeSessions = ConcurrentHashMap<String, LocalTransferSession>()
     private val clientAddresses = ConcurrentHashMap<Long, InetSocketAddress>()
 
     fun start(host: String, port: Int) {
@@ -106,8 +98,8 @@ class NetherNetLanBridge(
     }
 
     fun stop() {
-        pendingOffers.values.forEach { it.scheduledTask?.cancel(true) }
-        pendingOffers.clear()
+        activeSessions.values.forEach { it.close() }
+        activeSessions.clear()
         clientAddresses.clear()
         clientStatusCache.clear()
         activeFetches.clear()
@@ -119,6 +111,8 @@ class NetherNetLanBridge(
         defaultCachedPayload = null
         clientStatusCache.clear()
         activeFetches.clear()
+        activeSessions.values.forEach { it.close() }
+        activeSessions.clear()
         refreshDefaultStatusAsync(host, port)
     }
 
@@ -180,7 +174,7 @@ class NetherNetLanBridge(
                 }
                 if (buf.remaining() >= 12) {
                     val recipientId = buf.long
-                    buf.int // Skip 4-byte declared data length (vanilla reads remaining bytes)
+                    buf.int // Skip 4-byte declared data length
                     val dataBytes = ByteArray(buf.remaining())
                     buf.get(dataBytes)
                     val messageData = String(dataBytes, StandardCharsets.UTF_8)
@@ -243,139 +237,91 @@ class NetherNetLanBridge(
         val signalType = parts[0]
         val connectionId = parts[1]
         val signalPayload = parts[2]
-        val offerKey = "${java.lang.Long.toUnsignedString(senderId)}:$connectionId"
 
         when (signalType) {
             SIGNAL_OFFER -> {
-                val hasIdentity = signalPayload.contains("a=identity:")
-                val hasFingerprint = signalPayload.contains("a=fingerprint:")
                 Log.i(
                     TAG,
-                    "Received LAN CONNECTREQUEST from ${java.lang.Long.toUnsignedString(senderId)} (conn=$connectionId) at $senderAddress [hasIdentity=$hasIdentity, hasFingerprint=$hasFingerprint, len=${signalPayload.length}]",
+                    "Starting local transfer session for client ${java.lang.Long.toUnsignedString(senderId)} (conn=$connectionId) at $senderAddress",
                 )
-                Log.d(TAG, "LAN SDP Offer payload:\n$signalPayload")
-                val pending = PendingOffer(
+                startLocalTransferSession(
                     clientSenderId = senderId,
                     connectionId = connectionId,
                     clientAddress = senderAddress,
                     sdpOffer = signalPayload,
+                    targetHost = targetHost,
+                    targetPort = targetPort,
                 )
-                pendingOffers.put(offerKey, pending)?.scheduledTask?.cancel(false)
-                scheduleOfferForward(offerKey, pending, targetHost, targetPort)
             }
             SIGNAL_CANDIDATE -> {
-                Log.i(TAG, "Received LAN CANDIDATEADD (conn=$connectionId): $signalPayload")
-                val pending = pendingOffers[offerKey]
-                if (pending != null) {
-                    synchronized(pending) {
-                        pending.clientAddress = senderAddress
-                        pending.candidates.add(signalPayload.trim())
-                    }
-                }
+                Log.d(TAG, "Forwarding remote candidate to local transfer session (conn=$connectionId): $signalPayload")
+                activeSessions[connectionId]?.addRemoteCandidate(signalPayload.trim())
             }
             SIGNAL_ERROR -> {
                 Log.w(TAG, "Received LAN CONNECTERROR (conn=$connectionId): $signalPayload")
-                pendingOffers.remove(offerKey)?.scheduledTask?.cancel(false)
+                activeSessions.remove(connectionId)?.close()
             }
         }
     }
 
-    private fun scheduleOfferForward(
-        offerKey: String,
-        pending: PendingOffer,
+    private fun startLocalTransferSession(
+        clientSenderId: Long,
+        connectionId: String,
+        clientAddress: InetSocketAddress,
+        sdpOffer: String,
         targetHost: String,
         targetPort: Int,
     ) {
-        val pool = scheduler ?: return
-        pending.scheduledTask = pool.schedule({
-            pendingOffers.remove(offerKey)
-            forwardOfferToHttpEndpoint(pending, targetHost, targetPort)
-        }, OFFER_CANDIDATE_WAIT_MS, TimeUnit.MILLISECONDS)
-    }
-
-    private fun forwardOfferToHttpEndpoint(
-        pending: PendingOffer,
-        targetHost: String,
-        targetPort: Int,
-    ) {
-        val unsignedSenderId = java.lang.Long.toUnsignedString(pending.clientSenderId)
-        val candidatesSnapshot: List<String>
-        synchronized(pending) {
-            candidatesSnapshot = pending.candidates.toList()
+        val context = contextProvider()
+        if (context == null) {
+            Log.e(TAG, "Cannot start LocalTransferSession: Application Context is null")
+            sendSignalToClient(clientSenderId, clientAddress, SIGNAL_ERROR, connectionId, "21")
+            return
         }
 
-        val fullSdpOffer = buildFullIceSdpOffer(pending.sdpOffer, candidatesSnapshot)
-        val joinUrl = "http://$targetHost:$targetPort/v1/join/$unsignedSenderId"
+        activeSessions.remove(connectionId)?.close()
 
-        Log.i(
-            TAG,
-            "Forwarding LAN SDP offer (${candidatesSnapshot.size} candidates) -> POST $joinUrl",
+        val session = LocalTransferSession(
+            context = context,
+            clientSenderId = clientSenderId,
+            connectionId = connectionId,
+            targetHost = targetHost,
+            targetPort = targetPort,
+            sendLanSignal = { type, connId, payload ->
+                when (type) {
+                    SIGNAL_ANSWER -> {
+                        deliverLocalAnswerToLanClient(clientSenderId, clientAddress, connId, payload)
+                    }
+                    SIGNAL_CANDIDATE -> {
+                        deliverLocalCandidateToLanClient(clientSenderId, clientAddress, connId, payload)
+                    }
+                    else -> {
+                        sendSignalToClient(clientSenderId, clientAddress, type, connId, payload)
+                    }
+                }
+            },
+            onClosed = { closedConnId ->
+                activeSessions.remove(closedConnId)
+            },
         )
 
-        var conn: HttpURLConnection? = null
+        activeSessions[connectionId] = session
         try {
-            conn = (URL(joinUrl).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 8_000
-                readTimeout = 10_000
-                doOutput = true
-                useCaches = false
-                setRequestProperty("Content-Type", "application/sdp")
-                setRequestProperty("User-Agent", "libhttpclient/1.0.0.0")
-                setRequestProperty("Connection", "close")
-            }
-
-            val offerBytes = fullSdpOffer.toByteArray(StandardCharsets.UTF_8)
-            conn.setFixedLengthStreamingMode(offerBytes.size)
-            conn.outputStream.use { out ->
-                out.write(offerBytes)
-                out.flush()
-            }
-
-            val status = conn.responseCode
-            val responseBody = try {
-                val stream = if (status in 200..299) conn.inputStream else conn.errorStream
-                stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() } ?: ""
-            } catch (_: Exception) {
-                ""
-            }
-
-            if ((status !in 200..299) || responseBody.isBlank()) {
-                Log.w(TAG, "HTTP POST $joinUrl failed with status $status: $responseBody")
-                sendSignalToClient(
-                    clientSenderId = pending.clientSenderId,
-                    clientAddress = pending.clientAddress,
-                    signalType = SIGNAL_ERROR,
-                    connectionId = pending.connectionId,
-                    data = "21",
-                )
-                return
-            }
-
-            Log.i(TAG, "Received HTTP SDP answer (${responseBody.length} bytes) from $joinUrl")
-            deliverHttpAnswerToLanClient(
-                pending = pending,
-                fullSdpAnswer = responseBody,
-            )
+            session.acceptOffer(sdpOffer)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to POST SDP offer to $joinUrl: ${e.message}", e)
-            sendSignalToClient(
-                clientSenderId = pending.clientSenderId,
-                clientAddress = pending.clientAddress,
-                signalType = SIGNAL_ERROR,
-                connectionId = pending.connectionId,
-                data = "21",
-            )
-        } finally {
-            conn?.disconnect()
+            Log.e(TAG, "Failed to accept WebRTC SDP offer locally: ${e.message}", e)
+            session.close()
+            sendSignalToClient(clientSenderId, clientAddress, SIGNAL_ERROR, connectionId, "21")
         }
     }
 
-    private fun deliverHttpAnswerToLanClient(
-        pending: PendingOffer,
-        fullSdpAnswer: String,
+    private fun deliverLocalAnswerToLanClient(
+        clientSenderId: Long,
+        clientAddress: InetSocketAddress,
+        connectionId: String,
+        rawSdpAnswer: String,
     ) {
-        val rawLines = fullSdpAnswer.replace("\r\n", "\n").split("\n")
+        val rawLines = rawSdpAnswer.replace("\r\n", "\n").split("\n")
         val extractedCandidates = mutableListOf<String>()
         val answerLinesWithoutCandidates = mutableListOf<String>()
         var serverIceUfrag: String? = null
@@ -392,7 +338,6 @@ class NetherNetLanBridge(
             } else if (trimmed == "a=end-of-candidates") {
                 // Omit in trickle ICE answer
             } else if (trimmed.startsWith("m=application ")) {
-                // Vanilla LAN CONNECTRESPONSE uses port 9 in m=application
                 val parts = trimmed.split(" ")
                 if (parts.size >= 4) {
                     answerLinesWithoutCandidates.add(
@@ -410,31 +355,45 @@ class NetherNetLanBridge(
 
         val cleanSdpAnswer = answerLinesWithoutCandidates.joinToString("\r\n") + "\r\n"
 
-        // 1. Send CONNECTRESPONSE
         Log.i(
             TAG,
-            "Sending LAN CONNECTRESPONSE (conn=${pending.connectionId}) + ${extractedCandidates.size} candidates to ${pending.clientAddress}",
+            "Sending local CONNECTRESPONSE (conn=$connectionId) to $clientAddress",
         )
         sendSignalToClient(
-            clientSenderId = pending.clientSenderId,
-            clientAddress = pending.clientAddress,
+            clientSenderId = clientSenderId,
+            clientAddress = clientAddress,
             signalType = SIGNAL_ANSWER,
-            connectionId = pending.connectionId,
+            connectionId = connectionId,
             data = cleanSdpAnswer,
         )
 
-        // 2. Send each candidate via CANDIDATEADD
         for ((index, rawCandidate) in extractedCandidates.withIndex()) {
             val formattedCandidate = ensureCandidateMetadata(rawCandidate, serverIceUfrag, index + 1)
-            Log.d(TAG, "Sending LAN CANDIDATEADD #${index + 1}: $formattedCandidate")
             sendSignalToClient(
-                clientSenderId = pending.clientSenderId,
-                clientAddress = pending.clientAddress,
+                clientSenderId = clientSenderId,
+                clientAddress = clientAddress,
                 signalType = SIGNAL_CANDIDATE,
-                connectionId = pending.connectionId,
+                connectionId = connectionId,
                 data = formattedCandidate,
             )
         }
+    }
+
+    private fun deliverLocalCandidateToLanClient(
+        clientSenderId: Long,
+        clientAddress: InetSocketAddress,
+        connectionId: String,
+        rawCandidate: String,
+    ) {
+        val cleanCandidate = rawCandidate.removePrefix("a=").trim()
+        val formatted = ensureCandidateMetadata(cleanCandidate, null, 1)
+        sendSignalToClient(
+            clientSenderId = clientSenderId,
+            clientAddress = clientAddress,
+            signalType = SIGNAL_CANDIDATE,
+            connectionId = connectionId,
+            data = formatted,
+        )
     }
 
     private fun ensureCandidateMetadata(
@@ -460,74 +419,6 @@ class NetherNetLanBridge(
             result += " network-cost 0"
         }
         return result
-    }
-
-    private fun buildFullIceSdpOffer(
-        rawOffer: String,
-        trickleCandidates: List<String>,
-    ): String {
-        val lines = rawOffer.replace("\r\n", "\n").split("\n").map { it.trimEnd('\r') }.filter { it.isNotEmpty() }
-        val hasInlineCandidates = lines.any { it.startsWith("a=candidate:") }
-        if (hasInlineCandidates || trickleCandidates.isEmpty()) {
-            return lines.joinToString("\r\n") + "\r\n"
-        }
-
-        // Find the first UDP IPv4 candidate to populate m=application <port> and c=IN IP4 <ip>
-        var defaultIp: String? = null
-        var defaultPort: String? = null
-        for (cand in trickleCandidates) {
-            val clean = cand.removePrefix("a=").removePrefix("candidate:").trim()
-            val tokens = clean.split(Regex("\\s+"))
-            if (tokens.size >= 8 && tokens[2].equals("udp", ignoreCase = true)) {
-                val ip = tokens[4]
-                val port = tokens[5]
-                if (!ip.contains(":")) {
-                    defaultIp = ip
-                    defaultPort = port
-                    break
-                }
-            }
-        }
-
-        val outLines = mutableListOf<String>()
-        var candidatesInserted = false
-
-        for (line in lines) {
-            when {
-                line.startsWith("m=application ") && (defaultPort != null) -> {
-                    val parts = line.split(" ")
-                    if (parts.size >= 4) {
-                        outLines.add("m=application $defaultPort ${parts.subList(2, parts.size).joinToString(" ")}")
-                    } else {
-                        outLines.add(line)
-                    }
-                }
-                line.startsWith("c=IN IP4 ") && (defaultIp != null) -> {
-                    outLines.add("c=IN IP4 $defaultIp")
-                    if (!candidatesInserted) {
-                        for (cand in trickleCandidates) {
-                            val clean = cand.removePrefix("a=").trim()
-                            val withPrefix = if (clean.startsWith("candidate:")) "a=$clean" else "a=candidate:$clean"
-                            outLines.add(withPrefix)
-                        }
-                        candidatesInserted = true
-                    }
-                }
-                else -> {
-                    outLines.add(line)
-                }
-            }
-        }
-
-        if (!candidatesInserted) {
-            for (cand in trickleCandidates) {
-                val clean = cand.removePrefix("a=").trim()
-                val withPrefix = if (clean.startsWith("candidate:")) "a=$clean" else "a=candidate:$clean"
-                outLines.add(withPrefix)
-            }
-        }
-
-        return outLines.joinToString("\r\n") + "\r\n"
     }
 
     private fun sendSignalToClient(
@@ -645,8 +536,9 @@ class NetherNetLanBridge(
         val gameType = json.optInt("gameType", 0)
         val editor = json.optBoolean("editor", false)
         val hardcore = json.optBoolean("hardcore", false)
-        val onlineAuth = json.optBoolean("onlineAuth", true)
-        val selfSignedAuth = json.optBoolean("selfSignedAuth", false)
+        // LAN answers tell the client that self-signed / local auth is accepted
+        val onlineAuth = false
+        val selfSignedAuth = true
         val nonce = json.optString("nonce", "0000000000000000")
 
         return serializeServerData(
@@ -676,7 +568,7 @@ class NetherNetLanBridge(
             gameType = 0,
             editorWorld = false,
             hardcore = false,
-            acceptsOnlineAuth = true,
+            acceptsOnlineAuth = false,
             acceptsSelfSignedAuth = true,
             nonce = "0000000000000000",
         )
