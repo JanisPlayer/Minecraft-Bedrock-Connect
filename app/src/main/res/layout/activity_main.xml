@@ -73,6 +73,15 @@
                     android:minHeight="?attr/actionBarSize"
                     android:text="@string/restart" />
             </LinearLayout>
+
+            <CheckBox
+                android:id="@+id/checkBoxExperimentalLan"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="@string/experimental_lan_bridge"
+                android:textSize="12sp" />
         </LinearLayout>
 
         <LinearLayout
